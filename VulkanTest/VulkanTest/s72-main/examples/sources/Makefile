@@ -6,7 +6,7 @@ all : \
 	../sg-Support.s72 \
 	../sg-Containment.s72 \
 	../sg-Grouping.s72 \
-	../sphereflake.s72 \
+	../balls.s72 \
 	../sg-cube.s72 \
 
 
@@ -22,8 +22,8 @@ all : \
 ../sg-Grouping.s72 : scene-graphs.blend $(EXPORT_PY)
 	$(BLENDER) --background --python '$(EXPORT_PY)' -- '$<' --collection Grouping --animate 1 51 '$@'
 
-../sphereflake.s72 : sphereflake.blend $(EXPORT_PY)
-	$(BLENDER) --background --python '$(EXPORT_PY)' -- '$<' --collection Base '$@'
+../balls.s72 : balls.blend $(EXPORT_PY)
+	$(BLENDER) --background --python '$(EXPORT_PY)' -- '$<' --collection balls  --animate 1 60 '$@'
 
 ../sg-cube.s72 :  scene-graphs.blend $(EXPORT_PY)
 	$(BLENDER) --background --python '$(EXPORT_PY)' -- '$<' --collection Cube '$@'

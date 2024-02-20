@@ -1,6 +1,6 @@
 #include <iostream>
 #include <fstream>
-
+#include <cmath>
 #include <string>
 #include <map>
 #include <vector>
@@ -15,10 +15,16 @@
 
 class SimpleJSONParser {
 public:
-
+	float maxPeriod = 3.0f;
 	struct Position {
 		float x, y, z;
 	};
+
+	struct BoundingSphere {
+		glm::vec3 center;
+		float radius;
+	};
+
 	struct Color {
 		uint8_t r, g, b, a;
 	};
@@ -56,6 +62,8 @@ public:
 		//mesh customized
 		int offset = 0;
 		int stride = 0;
+
+		BoundingSphere bs;
 		//all
 		std::string type = "Null";
 		std::string name = "Null";
@@ -88,6 +96,8 @@ public:
 	};
 
 	std::vector<SceneItem> items;
+
+
 
 	/// <summary>
 	/// ///////////////////////////////// ------------------------------------------------------------------------------------------------- -helper ---------------------------------------------------------------------------------------
@@ -346,16 +356,19 @@ public:
 		else if (key == "channel") {
 			valEnd = std::min(json.find(',', valStart), json.find('}', valStart));
 			value = json.substr(valStart, valEnd - valStart);
+			value.erase(std::remove(value.begin(), value.end(), '\"'), value.end());
+
 			item.channel = value;
 		}
 		else if (key == "times") {
-			valEnd = std::min(json.find(',', valStart), json.find('}', valStart));
+			valEnd = json.find(']', valStart) + 1;
 			value = json.substr(valStart, valEnd - valStart);
 			std::vector<float> valueTest = stringToVector(value);
+			std::cout << "hi there: " << key << " : " << valueTest.size() << std::endl;
 			item.times = valueTest;
 		}
 		else if (key == "values") {
-			valEnd = std::min(json.find(',', valStart), json.find('}', valStart));
+			valEnd = json.find(']', valStart) + 1;
 			value = json.substr(valStart, valEnd - valStart);
 			std::vector<float> valueTest = stringToVector(value);
 			item.values = valueTest;
@@ -421,11 +434,196 @@ public:
 		}
 	}
 
+	int findInterval(std::vector<float> & frames, float time) {
+		int pos = 0;
+		for (int i = 0; i < frames.size(); i++) {
+			pos = i;
+			if (frames[i] > time) {
+				
+				break;
+			}
+		}
+		return pos;
+	}
+
+	glm::quat slerpQ(const glm::quat& q1, const glm::quat& q2, float t) {
+		float cosTheta = glm::dot(q1, q2);
+
+
+		if (cosTheta < 0.0f) {
+			return slerp(q1, -q2, t);
+		}
+
+		if (cosTheta > 0.9995f) {
+			return glm::normalize(glm::lerp(q1, q2, t));
+		}
+		else {
+			float angle = acos(cosTheta);
+			return (glm::sin((1.0f - t) * angle) * q1 + glm::sin(t * angle) * q2) / glm::sin(angle);
+		}
+	}
+
+	glm::vec3 vectorSlerp(const glm::vec3& v1, const glm::vec3& v2, float t) {
+		glm::vec3 unitV1 = glm::normalize(v1);
+		glm::vec3 unitV2 = glm::normalize(v2);
+
+		float dotProduct = glm::dot(unitV1, unitV2);
+
+		dotProduct = glm::clamp(dotProduct, -1.0f, 1.0f);
+
+		float omega = std::acos(dotProduct);
+
+		if (std::abs(omega) < 1e-4) {
+			return glm::normalize(glm::mix(unitV1, unitV2, t));
+		}
+
+		float sinOmega = std::sin(omega);
+		float a = std::sin((1 - t) * omega) / sinOmega;
+		float b = std::sin(t * omega) / sinOmega;
+
+		return glm::normalize((a * v1) + (b * v2));
+	}
+	/// ///////////////////////////////// ------------------------------------------------------------------------------------------------- -bouding sphere ---------------------------------------------------------------------------------------
+
+
+	BoundingSphere calculateBoundingSphere(const std::vector<Position>& vertices, const glm::mat4& globalTransform) {
+		// Transform vertices
+		std::vector<glm::vec3> transformedVertices;
+		for (const auto& v : vertices) {
+			glm::vec4 transformed = globalTransform * glm::vec4(v.x, v.y,v.z, 1.0f);
+			transformedVertices.push_back(glm::vec3(transformed));
+		}
+
+		// Calculate center
+		glm::vec3 center(0.0f);
+		for (const auto& v : transformedVertices) {
+			center += v;
+		}
+		center /= static_cast<float>(transformedVertices.size());
+
+		// Calculate radius
+		float radius = 0.0f;
+		for (const auto& v : transformedVertices) {
+			float distance = glm::distance(center, v);
+			radius = std::max(radius, distance);
+		}
+
+		return BoundingSphere{ center, radius };
+	}
+
+	//call each frame----------------------------------------------------------------------------------------------------------------------------------------------------------
+	void update(float globalTime) {
+		globalTime = std::fmod(globalTime, maxPeriod);
+		for (SceneItem& item : items) {
+			if (item.type == "DRIVER") {
+				if (item.channel == "translation") {
+					int pos = findInterval(item.times, globalTime);
+					float time_s = item.times[pos - 1];
+					float time_e = item.times[pos];
+					if (globalTime >= time_e) {
+						globalTime = time_e;
+					}
+					float ratio = (globalTime - time_s) / (time_e - time_s);
+					glm::vec3 value_s(item.values[3 * (pos - 1)], item.values[3 * (pos - 1) + 1], item.values[3 * (pos - 1) + 2]);
+					glm::vec3 value_e(item.values[3 * (pos)], item.values[3 * (pos) + 1], item.values[3 * (pos) + 2]);
+					
+					glm::vec3 value;
+					if (item.interpolation == "LINEAR") {
+						value = value_s + ratio * (value_e - value_s);
+					}
+					else if (item.interpolation == "STEP") {
+						value = value_s;
+					}
+					else if (item.interpolation == "SLERP") {
+						vectorSlerp(value_s, value_e, ratio);
+					}
+					else {
+						value = value_s;
+					}
+					items[item.node - 1].translation = { value.x, value.y, value.z };
+				}
+				if (item.channel == "scale") {
+					int pos = findInterval(item.times, globalTime);
+					float time_s = item.times[pos - 1];
+					float time_e = item.times[pos];
+					if (globalTime >= time_e) {
+						globalTime = time_e;
+					}
+					float ratio = (globalTime - time_s) / (time_e - time_s);
+					glm::vec3 value_s(item.values[3 * (pos - 1)], item.values[3 * (pos - 1) + 1], item.values[3 * (pos - 1) + 2]);
+					glm::vec3 value_e(item.values[3 * (pos)], item.values[3 * (pos)+1], item.values[3 * (pos)+2]);
+
+					glm::vec3 value;
+					if (item.interpolation == "LINEAR") {
+						value = value_s + ratio * (value_e - value_s);
+					}
+					else if (item.interpolation == "STEP") {
+						value = value_s;
+					}
+					else if (item.interpolation == "SLERP") {
+						vectorSlerp(value_s, value_e, ratio);
+					}
+					else {
+						value = value_s;
+					}
+					items[item.node - 1].scale = { value.x, value.y, value.z };
+				}
+				if (item.channel == "rotation") {
+					int pos = findInterval(item.times, globalTime);
+					float time_s = item.times[pos - 1];
+					float time_e = item.times[pos];
+					if (globalTime >= time_e) {
+						globalTime = time_e;
+					}
+					float ratio = (globalTime - time_s) / (time_e - time_s);
+					glm::quat value_s(item.values[4 * (pos - 1)], item.values[4 * (pos - 1) + 1], item.values[4 * (pos - 1) + 2], item.values[4 * (pos - 1) + 3]);
+					glm::quat value_e(item.values[4 * (pos)], item.values[4 * (pos)+1], item.values[4 * (pos)+2],  item.values[4 * (pos) + 3]);
+
+					glm::quat value = value_s;
+					if (item.interpolation == "LINEAR") {
+						value = value_s + ratio * (value_e - value_s);
+					}
+					else if (item.interpolation == "STEP") {
+						value = value_s;
+					}
+					else if (item.interpolation == "SLERP") {
+						slerpQ(value_s, value_e, ratio);
+					}
+					else {
+						value = value_s;
+					}
+					items[item.node - 1].rotation = { value.w, value.x, value.y, value.z};
+				}
+			}
+		}
+
+		rebuild();
+	}
+
+	void rebuild() {
+		for (SceneItem& item : items) {
+			if (item.type == "NODE") {
+				item.trans = calculateModelMatrix(item.translation, item.rotation, item.scale);
+			}
+		}
+
+		//arrange mesh and node transform
+		for (SceneItem& item : items) {
+			if (item.type == "NODE") {
+				getWorldTransform(item);
+				if (item.mesh_id > 0) {
+					item.bs = calculateBoundingSphere(items[item.mesh_id - 1].attributes.positionList, item.trans);
+				}
+			}
+		}
+	}
+
 	void build() {
 		unsigned int id = 0;
 		for (SceneItem& item : items) {
 			
 			id += 1;
+			item.id = id;
 			if (item.type == "SCENE") {
 				for (float i : item.roots) {
 					items[i - 1].parent = id;
@@ -448,13 +646,24 @@ public:
 					vertexList.push_back(sv);
 				}
 			}
+
+			if (item.type == "DRIVER") {
+				float maxtime = item.times[item.times.size() - 1];
+				if (maxtime > maxPeriod) maxPeriod = maxtime;
+				std::cout << maxtime << std::endl;
+			}
 		}
 		
 		//arrange mesh and node transform
 		for (SceneItem& item : items) {
 			if (item.type == "NODE") {
 				getWorldTransform(item);
+
+				if (item.mesh_id > 0) {
+					item.bs = calculateBoundingSphere(items[item.mesh_id - 1].attributes.positionList, item.trans);
+				}
 			}
+			
 		}
 		
 

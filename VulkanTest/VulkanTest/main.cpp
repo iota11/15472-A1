@@ -28,7 +28,10 @@
 #include <optional>
 #include <set>
 #include <unordered_map>
-#include "parser.cpp"
+#include "camera.cpp"
+#include <thread> // For std::this_thread::sleep_for
+
+
 
 const uint32_t WIDTH = 800;
 const uint32_t HEIGHT = 600;
@@ -163,6 +166,12 @@ public:
 	}
 
 private:
+	Camera* activeCamera;
+	Camera camera;
+	int sceneCamID = 0;
+	std::vector<Camera> sceneCameraList;
+	Camera debugCamera;
+
 	GLFWwindow* window;
 
 	VkInstance instance;
@@ -222,6 +231,61 @@ private:
 
 	bool framebufferResized = false;
 
+
+	void processInput(GLFWwindow* window) {
+		float deltaTime = 0.01f;
+		if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
+			activeCamera->ProcessKeyboard('W', deltaTime);
+		if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
+			activeCamera->ProcessKeyboard('S', deltaTime);
+		if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
+			activeCamera->ProcessKeyboard('A', deltaTime);
+		if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
+			activeCamera->ProcessKeyboard('D', deltaTime);
+
+		//camera
+		if (glfwGetKey(window, GLFW_KEY_1) == GLFW_PRESS)
+			activeCamera = &camera;
+		if (glfwGetKey(window, GLFW_KEY_2) == GLFW_PRESS) {
+			if (sceneCameraList.size() > 0) {
+				//std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+				sceneCamID += 1;
+				sceneCamID%= sceneCameraList.size();
+				activeCamera = &sceneCameraList[sceneCamID];
+			}
+		}
+			
+		if (glfwGetKey(window, GLFW_KEY_3) == GLFW_PRESS)
+			activeCamera = &debugCamera;
+	}
+	static void mouseCallbackStatic(GLFWwindow* window, double xpos, double ypos) {
+		HelloTriangleApplication* app = reinterpret_cast<HelloTriangleApplication*>(glfwGetWindowUserPointer(window));
+		if (app) {
+			app->mouse_callback(window, xpos, ypos);
+		}
+	}
+
+	// Mouse movement handling
+	void mouse_callback(GLFWwindow* window, double xpos, double ypos) {
+
+		static bool firstMouse = true;
+		static float lastX = 800 / 2.0f;
+		static float lastY = 600 / 2.0f;
+		if (firstMouse) {
+			lastX = xpos;
+			lastY = ypos;
+			firstMouse = false;
+		}
+
+		float xoffset = xpos - lastX;
+		float yoffset = lastY - ypos; // Reversed since y-coordinates go from bottom to top
+
+		lastX = xpos;
+		lastY = ypos;
+		//std::cout << lastX << "   mouse   " << lastY << std::endl;
+		activeCamera->ProcessMouseMovement(xoffset, yoffset);
+	}
+
 	void initWindow() {
 		glfwInit();
 
@@ -230,11 +294,34 @@ private:
 		window = glfwCreateWindow(WIDTH, HEIGHT, "Vulkan", nullptr, nullptr);
 		glfwSetWindowUserPointer(window, this);
 		glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
+
+		//register camera
+		glfwSetCursorPosCallback(window, mouseCallbackStatic);
+		glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+
+
 	}
 
 	static void framebufferResizeCallback(GLFWwindow* window, int width, int height) {
 		auto app = reinterpret_cast<HelloTriangleApplication*>(glfwGetWindowUserPointer(window));
 		app->framebufferResized = true;
+	}
+
+
+	void initCamera() {
+		camera.aspect = 1.2f;
+		camera.far = 500.0f;
+		camera.near = 0.1f;
+		camera.fov = 0.7f;
+		camera.moveable = true;
+
+		debugCamera.aspect = 1.2f;
+		debugCamera.far = 600.0f;
+		debugCamera.near = 0.1f;
+		debugCamera.fov = 1.0f;
+		debugCamera.moveable = true;
+		debugCamera.isCulling = false;
+		activeCamera = &camera;
 	}
 
 	void initVulkan() {
@@ -262,11 +349,18 @@ private:
 		createDescriptorSets();
 		createCommandBuffers();
 		createSyncObjects();
+
+		initCamera();
 	}
 
+
+
 	void mainLoop() {
+
 		while (!glfwWindowShouldClose(window)) {
 			glfwPollEvents();
+			processInput(window);
+			
 			drawFrame();
 		}
 
@@ -1033,7 +1127,7 @@ private:
 
 	void loadModel() {
 
-		std::string filePath = "s72-main/examples/sg-Containment.s72";
+		std::string filePath = "s72-main/examples/balls.s72";
 		std::string fileContent = readFileIntoString(filePath);
 		parser.parse(fileContent);
 		std::cout << "we have " << parser.vertexList.size() << std::endl;
@@ -1044,6 +1138,26 @@ private:
 			vertex.normal = { vtx.normal.x ,vtx.normal.y, vtx.normal.z };
 			vertices.push_back(vertex);
 		}
+		for (SimpleJSONParser::SceneItem item : parser.items) {
+			if (item.type == "NODE" && item.cam_id > 0) {
+				Camera cam;
+				glm::mat4 trans = item.trans;
+				glm::vec3 position = glm::vec3(trans[3][0], trans[3][1], trans[3][2]);
+				glm::mat3 rotationMatrix = glm::mat3(trans);
+				glm::vec3 forwardDirection = rotationMatrix * glm::vec3(0, 0, -1);
+				cam.Position = position;
+				cam.item_id = item.id;
+				cam.Front = forwardDirection;
+				cam.moveable = false; //freeze the camera
+				cam.aspect = parser.items[item.cam_id - 1].aspect;
+				cam.fov = parser.items[item.cam_id - 1].vfov;
+				cam.near = parser.items[item.cam_id - 1].near;
+				cam.far = parser.items[item.cam_id - 1].far;
+				sceneCameraList.push_back(cam);
+			}
+		}
+		//load camera
+
 		std::cout << "finish loading" << std::endl;
 	}
 	//this should be per mesh object
@@ -1307,25 +1421,41 @@ private:
 		//vkCmdBindIndexBuffer(commandBuffer, indexBuffer, 0, VK_INDEX_TYPE_UINT32);
 
 		vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSets[currentFrame], 0, nullptr);
-		std::cout << "start" << std::endl;
+		int cnt = 0;
 		for (SimpleJSONParser::SceneItem item : parser.items) {
 			if (item.type == "NODE" && item.mesh_id > 0) {
-				int offset = parser.items[item.mesh_id - 1].offset;
-				int stride = parser.items[item.mesh_id - 1].stride;
-				std::cout << item.mesh_id<< "    and    " << offset<<"   and    " << stride << std::endl;
+				bool inside = true;
 
-				vkCmdPushConstants(
-					commandBuffer,
-					pipelineLayout, 
-					VK_SHADER_STAGE_VERTEX_BIT,
-					0,
-					sizeof(glm::mat4),
-					&item.trans);
+				//check culling
+				if (activeCamera->isCulling) {
+					glm::mat4 viewMat = activeCamera->GetViewMatrix();
+					glm::mat4 projMat = glm::perspective(activeCamera->fov, swapChainExtent.width / (float)swapChainExtent.height, activeCamera->near, activeCamera->far);
+					glm::mat4 VP = projMat * viewMat;
 
-				vkCmdDraw(commandBuffer, stride, 1, offset, 0);
+					std::array<Plane, 6> frustumPlanes = activeCamera->extractFrustumPlanes(VP);
+
+					inside = activeCamera->isSphereInsideFrustum(item.bs, frustumPlanes);
+				}
+
+				if (inside) {
+					cnt++;
+					int offset = parser.items[item.mesh_id - 1].offset;
+					int stride = parser.items[item.mesh_id - 1].stride;
+					//std::cout << item.mesh_id<< "    and    " << offset<<"   and    " << stride << std::endl;
+
+					vkCmdPushConstants(
+						commandBuffer,
+						pipelineLayout,
+						VK_SHADER_STAGE_VERTEX_BIT,
+						0,
+						sizeof(glm::mat4),
+						&item.trans);
+
+					vkCmdDraw(commandBuffer, stride, 1, offset, 0);
+				}
 			}
 		}
-
+		std::cout << "draw mesh : " << cnt << std::endl;
 
 
 		//vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
@@ -1358,16 +1488,31 @@ private:
 		}
 	}
 
+
 	void updateUniformBuffer(uint32_t currentImage) {
 		static auto startTime = std::chrono::high_resolution_clock::now();
 
 		auto currentTime = std::chrono::high_resolution_clock::now();
 		float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
+		parser.update(time);
+		//update camera
+		for (Camera &cam : sceneCameraList) {
+			SimpleJSONParser::SceneItem& item = parser.items[cam.item_id - 1];
+			glm::mat4 trans = item.trans;
+			glm::vec3 position = glm::vec3(trans[3][0], trans[3][1], trans[3][2]);
+			glm::mat3 rotationMatrix = glm::mat3(trans);
+			glm::vec3 forwardDirection = rotationMatrix * glm::vec3(0, 0, -1);
+			cam.Position = position;
+			cam.Front = forwardDirection;
+		}
+
+		//std::cout << time << std::endl;
 
 		UniformBufferObject ubo{};
 		ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-		ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-		ubo.proj = glm::perspective(glm::radians(45.0f), swapChainExtent.width / (float)swapChainExtent.height, 0.1f, 10.0f);
+		//ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+		ubo.view = activeCamera -> GetViewMatrix();
+		ubo.proj = glm::perspective(activeCamera->fov, swapChainExtent.width / (float)swapChainExtent.height, activeCamera->near, activeCamera->far);
 		ubo.proj[1][1] *= -1;
 
 		memcpy(uniformBuffersMapped[currentImage], &ubo, sizeof(ubo));

@@ -1127,10 +1127,12 @@ private:
 
 	void loadModel() {
 
-		std::string filePath = "s72-main/examples/balls.s72";
+		std::string filePath;
+
+		std::cout << "Enter a path starting from : ";
+		std::getline(std::cin, filePath); // Waits for the user to enter a string and press Enter
 		std::string fileContent = readFileIntoString(filePath);
 		parser.parse(fileContent);
-		std::cout << "we have " << parser.vertexList.size() << std::endl;
 		for (SimpleJSONParser::SceneVertex vtx : parser.vertexList) {
 			Vertex vertex{};
 			vertex.pos = { vtx.pos.x, vtx.pos.y, vtx.pos.z };

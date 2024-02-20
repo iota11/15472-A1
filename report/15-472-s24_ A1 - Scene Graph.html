@@ -104,20 +104,24 @@ code var {
 </h1>
 
 <p class="placeholder">
-	I mainly referenced the code design from "Vulkan Tutorial" and added a parser class on my own. This class is used to manage all readable data and their relationships. I also incorporated a camera class to better manage the use of cameras. The parser class reads JSON files, and I record all data, regardless of type, using a generic type called "sceneItem". Finally, I traverse once to organize the parent relationships as well as the references to meshes and instances. In the original Vulkan engine, the parser exists as a class member and will use the data structures and methods in the parser to access and call the underlying layer during initialization and drawing.
+	I mainly referenced the code design from "Vulkan Tutorial" and added a parser class on my own. 
+	This class is used to manage all readable data and their relationships. I also incorporated a camera class to better manage the use of cameras. The parser class reads JSON files, and I record all data, regardless of type, using a generic type called "sceneItem". Finally, I traverse once to organize the parent relationships as well as the references to meshes and instances. In the original Vulkan engine, the parser exists as a class member and will use the data structures and methods in the parser to access and call the underlying layer during initialization and drawing.
 </p>
 
 <h2>My Animation <span class="atag creative">A1-create</span></h2>
 
 <p class="placeholder">
-Describe your animation and include a screen recording showing it running in real-time:
+I call it as a "chaos".I wanted to use multiple levels of rotation to simulate the system of planets and satellites. Later, I found that it could be made cooler and more complex, so I added a total of four layers of rotational parent relationships.
+I use usercamera -> scene camera -> debug camera to demo this video.
 </p>
 
-<video>
+<video width="600" height="400" controls>
+	<source src="testBalls.mp4" type="video/mp4">
+
 </video>
 
 <p class="placeholder">
-Describe how you created your animation.
+I set parent to each sphere and balls, and animated them in timeline. Try to let them rotate with different pivot axis to have a cooler dynamics.
 </p>
 
 <h2>Using the Scene Viewer</h2>
@@ -127,26 +131,20 @@ Describe how you created your animation.
 <h3>Command-line Arguments</h3>
 
 <p class="placeholder">
-Document the command-line arguments that can be used to control your viewer.
-Include both the command-line arguments required by the assignment statement and any additional arguments you decided to add.
+user can input the <var>scene.s72</var> file as the scene file to read.
 </p>
-
-<ul>
-<li class="placeholder"><code>--scene <var>scene.s72</var></code> -- required -- load scene from <code><var>scene.s72</var></code></li>
-<li class="placeholder">...</li>
-</ul>
 
 <h3>Controls</h3>
 
-<p class="placeholder">
-Document the keyboard and mouse controls used to control your viewer when run interactively.
-Note that the controls below are placeholders not requirements.
-</p>
+
 
 <ul>
-<li class="placeholder"><kbd>LMB+Drag</kbd> orbit the camera.</li>
-<li class="placeholder"><kbd>F5</kbd> switch to/from the debug camera.</li>
-<li class="placeholder">...</li>
+<li class="placeholder"><kbd>LMB</kbd> head up, down, left right of the camera.</li>
+<li class="placeholder"><kbd>1</kbd> switch to user camera.</li>
+<li class="placeholder"><kbd>2</kbd> switch to scene camera. press again to access other scene cameras in a loop</li>
+<li class="placeholder"><kbd>3</kbd> switch to debug camera. (no culling)</li>
+<li class="placeholder"><kbd>W</kbd> <kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move the camera.</li>
+
 </ul>
 
 
@@ -165,79 +163,246 @@ This section also forms a road map to your code that we can use while grading.
 <h3>Support Code for Math and Vulkan</h3>
 
 <p class="placeholder">
-Cover, at least:
-what math (vecr/mat/quat) classes and operations you implemented;
-any clever approaches to avoid writing duplicated code for, e.g., <code>vec2</code>, <code>vec3</code>, <code>vec4</code>;
-how your code gets a window and a swapchain;
-how you decided to handle Vulkan resource creation and destruction (e.g., where do pipelines get created? where do they get destroyed?).
+ I implemmented the struct color and postion for better reading the binary file.
+ <code>
+	<pre>
+	struct Color {
+		uint8_t r, g, b, a;
+	};
+	struct Position {
+		float x, y, z;
+	};
+	</pre>
+</code>
+
+I didn't do anything special in vulkan.
 </p>
 
 <h3>Loading scenes, Mesh data <span class="atag">A1-load</span></h3> 
 
 <p class="placeholder">
-Cover, at least:
-how your viewer stores mesh and scene data;
-your approach to parsing JSON.
+I use a general struct to record all the "node" "scene" "mesh" "camera""driver", which includes
+all the property the have.
+<pre>
+
+<code>
+		struct SceneItem {
+			int parent = 0;
+			int id = 0;
+			glm::mat4 trans;
+	
+			//mesh customized
+			int offset = 0;
+			int stride = 0;
+	
+			BoundingSphere bs;
+			//all
+			std::string type = "Null";
+			std::string name = "Null";
+			//root
+			std::vector<float> roots;
+			//camera
+			float aspect = 0;
+			float vfov = 0;
+			float near = 0;
+			float far = 0;
+			//mesh
+			std::string topology = "Null";
+			int count = 0;
+			Attributes attributes;
+	
+			//node
+			std::vector<float> childrenList;
+			std::vector<float> translation;
+			std::vector<float> rotation;
+			std::vector<float> scale;
+			int cam_id = 0;
+			int mesh_id = 0;
+	
+			//driver
+			int node = 0;
+			std::string channel = "Null";
+			std::vector<float> times;
+			std::vector<float> values;
+			std::string interpolation = "Null";
+		};
+</code>
+</pre>
+I basically read all the token and whenever I read a "{" I will establish a new node and read all the attributes
+after until I read "}" to stop
+
 </p>
 
 <h3>Drawing the scene. <span class="atag">A1-show</span></h3>
 
 <p class="placeholder">
-Cover, at least:
-how your code computes camera transformations;
-how your code get transformation and vertex data to your shaders.
+to draw the scene, I take care of the nodes that has either meshes or camera. <br>
+for each frame, I will firstly recompute the translation, scale and rotation of each node(driven by animation)
+Then, I will let them trace backward to compute the model matrix.
+Do when I draw the mesh, I could get the model matrix each meshes. So as the cameras.<br>
+
+To get the data in shader. I combine all the mesh vertices in a single vertex buffer, where each 
+mesh stores the offset and stride. I use push-constant to sent the transformation matrix each objects, 
+and draw them by specify the offset and stride.
 </p>
 <p class="placeholder">
-Include a screenshot of your viewer drawing an example scene.
+	<img src="drawing_1.png" width="600" height="300" alt="Italian Trulli">
 </p>
 
 <h3>Handling interactive camera and debug camera movement. <span class="atag">A1-show</span></h3>
 
 <p class="placeholder">
-Cover, at least:
-what camera controls you decided to implement;
-where the camera controls are implemented.
+I first use a callback funtiuon to read the mouse and keyboard actions. The I refect them back to 
+the camera translation, yaw, pitch and rotate. 
+<code>
+	<pre>
+		static void mouseCallbackStatic(GLFWwindow* window, double xpos, double ypos) {
+			HelloTriangleApplication* app = reinterpret_cast<HelloTriangleApplication*>(glfwGetWindowUserPointer(window));
+			if (app) {
+				app->mouse_callback(window, xpos, ypos);
+			}
+		}
+	
+		// Mouse movement handling
+		void mouse_callback(GLFWwindow* window, double xpos, double ypos) {
+	
+			static bool firstMouse = true;
+			static float lastX = 800 / 2.0f;
+			static float lastY = 600 / 2.0f;
+			if (firstMouse) {
+				lastX = xpos;
+				lastY = ypos;
+				firstMouse = false;
+			}
+	
+			float xoffset = xpos - lastX;
+			float yoffset = lastY - ypos; // Reversed since y-coordinates go from bottom to top
+	
+			lastX = xpos;
+			lastY = ypos;
+			//std::cout << lastX << "   mouse   " << lastY << std::endl;
+			activeCamera->ProcessMouseMovement(xoffset, yoffset);
+		}
+
+		if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
+			activeCamera->ProcessKeyboard('W', deltaTime);
+		if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
+			activeCamera->ProcessKeyboard('S', deltaTime);
+		if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
+			activeCamera->ProcessKeyboard('A', deltaTime);
+		if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
+			activeCamera->ProcessKeyboard('D', deltaTime);
+	</pre>
+</code> 
+
+for the scene camera, since I had all the nodes recording the global transformation in each frame, I just convert 
+the transformation matrix back to the position and lookat vector.
 </p>
 <p class="placeholder">
-Include a screen recording of you moving the camera in a scene.
+
+
+
+<video width="600" height="400" controls>
+	<source src="testAnimatedCamera.mp4" type="video/mp4">
+
+</video>
+
 </p>
 
 <h3>Frustum culling <span class="atag">A1-cull</span></h3>
 
 <p class="placeholder">
-Cover, at least:
-your culling approach;
-what bounding volume you use for meshes and where it is computed.
+I use boundingsphere as the bouding volume. The sphere is calculated by measuring all the vertices
+applied with model matrix. I anaylsis the center and max radius for each mesh.<br>
+To cull the meshes, I store 6 different planes of the view frusturm like below<br>
+
+<code>
+	<pre>
+		std::array<Plane, 6> extractFrustumPlanes(const glm::mat4& VP) {
+			std::array<Plane, 6> planes;
+			// Extract planes
+			planes[0] = { glm::vec3(VP[0][3] + VP[0][0], VP[1][3] + VP[1][0], VP[2][3] + VP[2][0]), VP[3][3] + VP[3][0] }; // Left
+			planes[1] = { glm::vec3(VP[0][3] - VP[0][0], VP[1][3] - VP[1][0], VP[2][3] - VP[2][0]), VP[3][3] - VP[3][0] }; // Right
+			planes[2] = { glm::vec3(VP[0][3] + VP[0][1], VP[1][3] + VP[1][1], VP[2][3] + VP[2][1]), VP[3][3] + VP[3][1] }; // Bottom
+			planes[3] = { glm::vec3(VP[0][3] - VP[0][1], VP[1][3] - VP[1][1], VP[2][3] - VP[2][1]), VP[3][3] - VP[3][1] }; // Top
+			planes[4] = { glm::vec3(VP[0][3] + VP[0][2], VP[1][3] + VP[1][2], VP[2][3] + VP[2][2]), VP[3][3] + VP[3][2] }; // Near
+			planes[5] = { glm::vec3(VP[0][3] - VP[0][2], VP[1][3] - VP[1][2], VP[2][3] - VP[2][2]), VP[3][3] - VP[3][2] }; // Far
+	
+			// Normalize planes
+			for (auto& plane : planes) {
+				plane.normalize();
+			}
+	
+			return planes;
+		}
+	</pre>
+</code>
+to calculate the intersection of each plan, I just calculate the sphere distance to measure.
 </p>
 <p class="placeholder">
-Include a screenshot or recording showing that culling is working (e.g., by using a debug camera to show that meshes outside the user camera's view aren't being drawn).
+
+	you can see the drawing mesh number decrease to 0 when move camera away from the scene.
+<video width="600" height="400" controls>
+	<source src="showCulling.mp4" type="video/mp4">
+
+</video>
 </p>
 
 <h3>Animating the scene <span class="atag">A1-move</span></h3>
 
 <p class="placeholder">
 Cover, at least:
-how your viewer stores keyframes;
-where your code updates animations;
-how your code computes elapsed time (if it isn't running in headless mode!).
+I store all the times and values in each "DRIVER" node<br>
+and foreach frame, I have a update function in parser that:
+	will check each "DRIVER" times and get the ratio in between two frames (start and end frame).
+	then I intepolate the value by this ratio with three different methods.<br>
+
+	the slerp interpolation is quite tricky:
+	<code>
+		<pre>
+			glm::vec3 vectorSlerp(const glm::vec3& v1, const glm::vec3& v2, float t) {
+				glm::vec3 unitV1 = glm::normalize(v1);
+				glm::vec3 unitV2 = glm::normalize(v2);
+		
+				float dotProduct = glm::dot(unitV1, unitV2);
+		
+				dotProduct = glm::clamp(dotProduct, -1.0f, 1.0f);
+		
+				float omega = std::acos(dotProduct);
+		
+				if (std::abs(omega) < 1e-4) {
+					return glm::normalize(glm::mix(unitV1, unitV2, t));
+				}
+		
+				float sinOmega = std::sin(omega);
+				float a = std::sin((1 - t) * omega) / sinOmega;
+				float b = std::sin(t * omega) / sinOmega;
+		
+				return glm::normalize((a * v1) + (b * v2));
+			}
+		</pre>
+	</code>
+	<video width="600" height="400" controls>
+		<source src="testAnimatedCamera.mp4" type="video/mp4">
+	
+	</video>
+	<video width="600" height="400" controls>
+		<source src="testAnimations.mp4" type="video/mp4">
+	
+	</video>
+	</p>
 </p>
 
-<p class="placeholder">
-Include a screen recording showing an animation being played back by your viewer.
-</p>
 
 <h3>Handling headless mode <span class="atag">A1-hide</span></h3>
 
 <p class="placeholder">
-Cover, at least:
-how your code deals with not having a window;
-how you deal with getting the timestamps from the events file to (e.g.) animation updates;
-any extra events you decided to support.
+I didn't finish this part
 </p>
 
 <h3>Performance improvements <span class="atag extra">A1x-fast</span></h3>
 <p class="placeholder">
-Discuss which performance improvements you chose to pursue and how you implemented them.
+I didn't finish this part
 </p>
 
 <p class="placeholder">
@@ -247,35 +412,9 @@ NOTE: you will demonstrate your performance improvements in the next section.
 <h2>Performance Tests</h2>
 
 <p class="placeholder">
-This section demonstrates that you have tested your code, including finding its limits.
+	I didn't finish this part
 </p>
 
-<p class="placeholder">
-Before getting into the tests, describe here the relevant information about your testing system(s).
-(CPU, GPU, Memory, driver versions, OS version, ...  -- anything you think might be relevant!)
-</p>
-
-<h3>Culling</h3>
-<p class="placeholder">
-Demonstrate a scene / camera angle where your culling code improves performance; and demonstrate one where it does not improve performance.
-(If you developed more than one culling method, demonstrate the performance gain/loss from each of them in this section.)
-</p>
-
-<p class="placeholder">
-Use charts to summarize performance and graphs to show overall performance.
-Include screenshots of test scenes.
-</p>
-
-<h3>Bottlenecks</h3>
-<p class="placeholder">
-Demonstrate your code bottlenecking on scene traversal (CPU), vertex processing/assembly (GPU), and fragment processing/write-back (GPU).
-</p>
-
-
-<p class="placeholder">
-Use graphs to demonstrate sensitivity to test scene complexity.
-Include screenshots of test scenes.
-</p>
 
 <!-- For example:
 <h4>CPU Bottleneck</h4>
@@ -285,16 +424,10 @@ This plot shows the ...
 </p>
 -->
 
-<h3>Performance Improvements</h3>
-
-<p class="placeholder">
-For any other performance improvements you attempted, include comparisons showing them working (or not working).
-Include screenshots of any test scenes and graphs or charts showing performance differences.
-</p>
 
 <h2>Feedback</h2>
 <p class="placeholder">
-This is the end of the structured report. Feel free to add feedback about A1 (or A0!) to this section.
+	it took me too long to write a parser which is not so related to the course.
 </p>
 
 

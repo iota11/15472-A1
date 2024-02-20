@@ -87,7 +87,7 @@ struct SwapChainSupportDetails {
 struct Vertex {
 	glm::vec3 pos;
 	glm::vec3 color;
-	glm::vec2 texCoord;
+	glm::vec3 normal;
 
 	static VkVertexInputBindingDescription getBindingDescription() {
 		VkVertexInputBindingDescription bindingDescription{};
@@ -113,14 +113,14 @@ struct Vertex {
 
 		attributeDescriptions[2].binding = 0;
 		attributeDescriptions[2].location = 2;
-		attributeDescriptions[2].format = VK_FORMAT_R32G32_SFLOAT;
-		attributeDescriptions[2].offset = offsetof(Vertex, texCoord);
+		attributeDescriptions[2].format = VK_FORMAT_R32G32B32_SFLOAT;
+		attributeDescriptions[2].offset = offsetof(Vertex, normal);
 
 		return attributeDescriptions;
 	}
 
 	bool operator==(const Vertex& other) const {
-		return pos == other.pos && color == other.color && texCoord == other.texCoord;
+		return pos == other.pos && color == other.color && normal == other.normal;
 	}
 };
 
@@ -131,7 +131,7 @@ struct Vertex {
 namespace std {
 	template<> struct hash<Vertex> {
 		size_t operator()(Vertex const& vertex) const {
-			return ((hash<glm::vec3>()(vertex.pos) ^ (hash<glm::vec3>()(vertex.color) << 1)) >> 1) ^ (hash<glm::vec2>()(vertex.texCoord) << 1);
+			return ((hash<glm::vec3>()(vertex.pos) ^ (hash<glm::vec3>()(vertex.color) << 1)) >> 1) ^ (hash<glm::vec2>()(vertex.normal) << 1);
 		}
 	};
 }
@@ -1033,7 +1033,7 @@ private:
 
 	void loadModel() {
 
-		std::string filePath = "s72-main/examples/sg-Grouping.s72";
+		std::string filePath = "s72-main/examples/sg-Containment.s72";
 		std::string fileContent = readFileIntoString(filePath);
 		parser.parse(fileContent);
 		std::cout << "we have " << parser.vertexList.size() << std::endl;
@@ -1041,7 +1041,7 @@ private:
 			Vertex vertex{};
 			vertex.pos = { vtx.pos.x, vtx.pos.y, vtx.pos.z };
 			vertex.color = { vtx.color.r/255.0f, vtx.color.g / 255.0f,vtx.color.b / 255.0f };
-			//vertex.color = {1, 1,0};
+			vertex.normal = { vtx.normal.x ,vtx.normal.y, vtx.normal.z };
 			vertices.push_back(vertex);
 		}
 		std::cout << "finish loading" << std::endl;

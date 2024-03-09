@@ -108,9 +108,9 @@ public:
 
 		//node
 		std::vector<float> childrenList;
-		std::vector<float> translation;
-		std::vector<float> rotation;
-		std::vector<float> scale;
+		std::vector<float> translation = {0, 0, 0};
+		std::vector<float> rotation = {0,0,0,1};
+		std::vector<float> scale = {1,1,1};
 		int cam_id = 0;
 		int mesh_id = 0;
 		int env_id = 0;
@@ -953,6 +953,7 @@ public:
 				for (float i : item.childrenList) {
 					items[i - 1].parent = id;
 				}
+
 				item.trans = calculateModelMatrix(item.translation, item.rotation, item.scale);
 			}
 			if (item.type == "MESH") {

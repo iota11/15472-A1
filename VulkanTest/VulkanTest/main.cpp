@@ -1127,8 +1127,8 @@ private:
 
 	void loadModel() {
 
-		std::string filePath = "s72-main/examples/materials.s72";
-
+		//std::string filePath = "s72/examples/materials.s72";
+		std::string filePath = "s72/examples/env-cube.s72";
 		//std::cout << "Enter a path starting from : ";
 		//std::getline(std::cin, filePath); // Waits for the user to enter a string and press Enter
 		std::string fileContent = readFileIntoString(filePath);

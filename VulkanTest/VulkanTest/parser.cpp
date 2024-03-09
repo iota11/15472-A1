@@ -19,7 +19,12 @@ public:
 	struct Position {
 		float x, y, z;
 	};
-
+	struct TexCoord {
+		float u, v;
+	};
+	struct Tangent {
+		float x, y, z, w;
+	};
 	struct BoundingSphere {
 		glm::vec3 center;
 		float radius;
@@ -39,6 +44,8 @@ public:
 		std::vector<Position> positionList;
 		std::vector<Position> normalList;
 		std::vector<Color> colorList;
+		std::vector<TexCoord> texCoordList;
+		std::vector<Tangent> tangentList;
 	};
 
 	struct MeshNode
@@ -46,6 +53,7 @@ public:
 		glm::mat4 trans;
 		int mesh_id;
 	};
+
 	std::vector<MeshNode> meshNodeList;
 	struct CamNode
 	{
@@ -53,6 +61,24 @@ public:
 		int mesh_id;
 	};
 
+	struct PBR {
+		glm::vec3 albedo = glm::vec3(1.0f,1.0f,1.0f);
+		std::string albedoTex;
+		float roughness;
+		std::string roughtnessMap;
+		float metalness;
+		std::string metalnessMap;
+	};
+
+	struct Lambertian {
+		glm::vec3 albedo = glm::vec3(1.0f, 1.0f, 1.0f);
+		std::string albedoTex;
+	};
+
+	struct Radiance {
+		std::string source;
+		
+	};
 
 	struct SceneItem {
 		int parent = 0;
@@ -78,6 +104,7 @@ public:
 		std::string topology = "Null";
 		int count = 0;
 		Attributes attributes;
+		int material_id = 0;
 
 		//node
 		std::vector<float> childrenList;
@@ -86,6 +113,7 @@ public:
 		std::vector<float> scale;
 		int cam_id = 0;
 		int mesh_id = 0;
+		int env_id = 0;
 
 		//driver
 		int node = 0;
@@ -93,6 +121,21 @@ public:
 		std::vector<float> times;
 		std::vector<float> values;
 		std::string interpolation = "Null";
+
+		//material
+		std::string normalMap;
+		std::string displacementMap;
+		PBR pbrAttrib;
+		Lambertian lambertAttrib;
+		bool isPBR = false;
+		bool isLambert = false;
+		bool isEnv = false;
+		bool isSimple = false;
+		bool isMirror = false;
+
+
+		//environment
+		Radiance radiance;
 	};
 
 	std::vector<SceneItem> items;
@@ -145,6 +188,60 @@ public:
 		file.close();
 		return positions;
 	}
+	std::vector<Tangent> readBinary32x4(std::string filePath, const size_t s, size_t o) {
+		// Open the file for input in binary mode
+		std::ifstream file(filePath, std::ios::binary);
+		std::vector<Tangent> tangents;
+
+		if (!file) {
+			std::cerr << "Cannot open file: " << filePath << std::endl;
+			return tangents;
+		}
+
+		const size_t stride = s;
+		size_t offset = o;
+		while (file) {
+			// Seek to the current offset
+			file.seekg(offset);
+			Tangent tant;
+			// Read the position data
+			file.read(reinterpret_cast<char*>(&tant), sizeof(Tangent));
+			if (file) { // If the read was successful, add the position to the vector
+				tangents.push_back(tant);
+				offset += stride;
+			}
+		}
+
+		file.close();
+		return tangents;
+	}
+	std::vector<TexCoord> readBinary32x2(std::string filePath, const size_t s, size_t o) {
+		// Open the file for input in binary mode
+		std::ifstream file(filePath, std::ios::binary);
+		std::vector<TexCoord> texcoords;
+
+		if (!file) {
+			std::cerr << "Cannot open file: " << filePath << std::endl;
+			return texcoords;
+		}
+
+		const size_t stride = s;
+		size_t offset = o;
+		while (file) {
+			// Seek to the current offset
+			file.seekg(offset);
+			TexCoord texC;
+			// Read the position data
+			file.read(reinterpret_cast<char*>(&texC), sizeof(TexCoord));
+			if (file) { // If the read was successful, add the position to the vector
+				texcoords.push_back(texC);
+				offset += stride;
+			}
+		}
+
+		file.close();
+		return texcoords;
+	}
 
 	std::vector<Color> readBinary8(std::string filePath, const size_t s, size_t o) {
 		std::vector<Color> colors;
@@ -193,7 +290,43 @@ public:
 		size_t stride = std::stoi(text.substr(valStart, valEnd - valStart));
 		return readBinary32(filepath, stride, offset);
 	}
+	std::vector<Tangent> parseBinary32x4(std::string& text) {
+		std::string path = "s72-main/examples/";
+		int valStart = text.find(':') + 1;
+		int valEnd = text.find(',');
+		std::string filepath = text.substr(valStart, valEnd - valStart);
+		filepath.erase(std::remove(filepath.begin(), filepath.end(), '\"'), filepath.end());
+		filepath = path + filepath;
+		//offset
+		valStart = text.find(':', valEnd) + 1;
+		valEnd = text.find(',', valStart);
+		size_t offset = std::stoi(text.substr(valStart, valEnd - valStart));
 
+		//stride
+		valStart = text.find(':', valEnd) + 1;
+		valEnd = text.find(',', valStart);
+		size_t stride = std::stoi(text.substr(valStart, valEnd - valStart));
+		return readBinary32x4(filepath, stride, offset);
+	}
+
+	std::vector<TexCoord> parseBinary32x2(std::string& text) {
+		std::string path = "s72-main/examples/";
+		int valStart = text.find(':') + 1;
+		int valEnd = text.find(',');
+		std::string filepath = text.substr(valStart, valEnd - valStart);
+		filepath.erase(std::remove(filepath.begin(), filepath.end(), '\"'), filepath.end());
+		filepath = path + filepath;
+		//offset
+		valStart = text.find(':', valEnd) + 1;
+		valEnd = text.find(',', valStart);
+		size_t offset = std::stoi(text.substr(valStart, valEnd - valStart));
+
+		//stride
+		valStart = text.find(':', valEnd) + 1;
+		valEnd = text.find(',', valStart);
+		size_t stride = std::stoi(text.substr(valStart, valEnd - valStart));
+		return readBinary32x2(filepath, stride, offset);
+	}
 	std::vector<Color> parseBinary8(std::string& text) {
 		std::string path = "s72-main/examples/";
 		int valStart = text.find(':') + 1;
@@ -254,25 +387,73 @@ public:
 
 		}
 		else if (key == "attributes") {
-			// position
-			valStart = json.find('{', valStart + 1) + 1;
-			valEnd = json.find('}', valStart);
-			std::string posVal = json.substr(valStart, valEnd - valStart);
-			item.attributes.positionList = parseBinary32(posVal);
-			//normal
-			valStart = json.find('{', valEnd + 1) + 1;
-			valEnd = json.find('}', valStart);
-			std::string normalVal = json.substr(valStart, valEnd - valStart);
-			item.attributes.normalList = parseBinary32(normalVal);
+			int cnt = 0;
+			char test = json[valStart];
+			while (json[valEnd] != '}') {
+				cnt++;
+				if (cnt > 5) break;
+				valStart = json.find('\"', valEnd);
+				valEnd = json.find('\"', valStart+1);
+				auto key2 = json.substr(valStart, valEnd - valStart);
+				key2.erase(std::remove(key2.begin(), key2.end(), '\"'), key2.end());
+				std::cout << "   key2 is " << key2 << std::endl;
+				if (key2 == "POSITION") {
+					// position
+					valStart = json.find('{', valStart + 1) + 1;
+					valEnd = json.find('}', valStart);
+					std::string posVal = json.substr(valStart, valEnd - valStart);
+					item.attributes.positionList = parseBinary32(posVal);
+				}
+				
+				else if (key2 == "NORMAL") {
+					//normal
+					valStart = json.find('{', valEnd + 1) + 1;
+					valEnd = json.find('}', valStart);
+					std::string normalVal = json.substr(valStart, valEnd - valStart);
+					item.attributes.normalList = parseBinary32(normalVal);
+				}
+				else if (key2 == "TANGENT") {
+					//Tangent
+					valStart = json.find('{', valEnd + 1) + 1;
+					valEnd = json.find('}', valStart);
+					std::string tangentVal = json.substr(valStart, valEnd - valStart);
+					item.attributes.tangentList = parseBinary32x4(tangentVal);
+				}
+				else if (key2 == "TEXCOORD") {
+					// texcoord
+					valStart = json.find('{', valEnd + 1) + 1;
+					valEnd = json.find('}', valStart);
+					std::string texcoodVal = json.substr(valStart, valEnd - valStart);
+					item.attributes.texCoordList = parseBinary32x2(texcoodVal);
+				}
+				else if (key2 == "COLOR") {
+					//color
+					valStart = json.find('{', valEnd + 1) + 1;
+					valEnd = json.find('}', valStart);
+					std::string colorVal = json.substr(valStart, valEnd - valStart);
+					item.attributes.colorList = parseBinary8(colorVal);
+					
+				}
+				
+				valEnd += 1; //skip this"}"
+				while ((json[valEnd] == ' ')  || (json[valEnd] == '\t') || (json[valEnd] == '\n') || (json[valEnd] == ',')) {
+					//std::cout << "skip the " << json[valEnd] << " ------------------"<<std::endl;
+					//char test = json[valEnd];
+					valEnd++;
+				}
+			}
 
-			//color
-			valStart = json.find('{', valEnd + 1) + 1;
-			valEnd = json.find('}', valStart);
-			std::string colorVal = json.substr(valStart, valEnd - valStart);
-			item.attributes.colorList = parseBinary8(colorVal);
-			float itemss = 12;
-
+			valEnd = json.find('}', valEnd) +1;
+			float t = 1;
 		}
+		else if (key == "material") {
+			valEnd = std::min(json.find(',', valStart), json.find('}', valStart));
+			value = json.substr(valStart, valEnd - valStart);
+			int num = std::stoi(value);//
+			item.material_id = num;
+		}
+
+
 		//node 
 		else if (key == "translation") {
 			valEnd = json.find(']', valStart) + 1;
@@ -292,14 +473,28 @@ public:
 			std::vector valueTest = stringToVector(value);
 			item.scale = valueTest;
 		}
-
 		else if (key == "mesh") {
 			valEnd = std::min(json.find(',', valStart), json.find('}', valStart));
 			value = json.substr(valStart, valEnd - valStart);
 			int valueTest = std::stoi(value);
-			std::cout << "meshid: " << key << " : " << valueTest << std::endl;
+			//std::cout << "meshid: " << key << " : " << valueTest << std::endl;
 			item.mesh_id = valueTest;
 		}
+
+		else if (key == "environment") {
+			if (item.type == "NODE") {
+				valEnd = std::min(json.find(',', valStart), json.find('}', valStart));
+				value = json.substr(valStart, valEnd - valStart);
+				int valueTest = std::stoi(value);
+				std::cout << "environmentid: " << key << " : " << valueTest << std::endl;
+				item.env_id = valueTest;
+			}
+			else {
+				item.isEnv = true;
+				valEnd = std::min(json.find(',', valStart), json.find('}', valStart));
+			}
+		}
+
 		else if (key == "children") {
 			valEnd = json.find('}', valStart);
 			value = json.substr(valStart, valEnd - valStart);
@@ -387,13 +582,138 @@ public:
 			//std::cout << "hi there: " << key << " : " << valueTest [0] << std::endl;
 
 		}
-		//data
-		else if (key == "data") {
-			valEnd = json.find(']', valStart) + 1;
+
+
+		//materials
+		else if (key == "normalMap") {
+			valEnd = json.find('}', valStart);
+			valStart = json.find(':', valStart) + 1;
 			value = json.substr(valStart, valEnd - valStart);
-			std::vector valueTest = stringToVector(value);
+			value.erase(std::remove(value.begin(), value.end(), '\"'), value.end());
+			std::cout << "normal map is " << value << std::endl;
+			item.normalMap = value;
 
 		}
+
+		else if (key == "displacementMap") {
+			valEnd = json.find('}', valStart);
+			valStart = json.find(':', valStart) + 1;
+			value = json.substr(valStart, valEnd - valStart);
+			value.erase(std::remove(value.begin(), value.end(), '\"'), value.end());
+			std::cout << "displacement map is " << value << std::endl;
+			item.normalMap = value;
+		}
+
+		else if (key == "pbr") {
+			item.isPBR = true;
+			//albedo
+			valStart = json.find(':', valStart) + 1;
+			while (json[valStart] == ' ') valStart += 1;
+			if (json[valStart] == '[') {
+				valStart += 1;
+				valEnd = json.find(']', valStart) + 1;
+				value = json.substr(valStart, valEnd - valStart);
+				std::vector valueTest = stringToVector(value);
+				item.pbrAttrib.albedo = glm::vec3(valueTest[0], valueTest[1], valueTest[2]);
+			}
+			else if (json[valStart] == '{') {
+				valEnd = json.find('}', valStart);
+				valStart = json.find(':', valStart) + 1;
+				value = json.substr(valStart, valEnd - valStart);
+				value.erase(std::remove(value.begin(), value.end(), '\"'), value.end());
+				std::cout << "pbr albedo map is " << value << std::endl;
+				item.pbrAttrib.albedoTex = value;
+			}
+			//roughness
+			valStart = json.find(':', valStart) + 1;
+			while (json[valStart] == ' ') valStart += 1;
+			if (json[valStart] == '{') {
+				valEnd = json.find('}', valStart);
+				valStart = json.find(':', valStart) + 1;
+				value = json.substr(valStart, valEnd - valStart);
+				value.erase(std::remove(value.begin(), value.end(), '\"'), value.end());
+				std::cout << "pbr roughness map is " << value << std::endl;
+				item.pbrAttrib.roughtnessMap = value;
+			}
+			else {
+				valEnd = json.find(',', valStart);
+				value = json.substr(valStart, valEnd - valStart);
+				float valueTest = std::stof(value);
+				//std::cout << "meshid: " << key << " : " << valueTest << std::endl;
+				item.pbrAttrib.roughness = valueTest;
+			}
+
+			//metalness
+			valStart = json.find(':', valStart) + 1;
+			while (json[valStart] == ' ') valStart += 1;
+			if (json[valStart] == '{') {
+				valEnd = json.find('}', valStart);
+				valStart = json.find(':', valStart) + 1;
+				value = json.substr(valStart, valEnd - valStart);
+				value.erase(std::remove(value.begin(), value.end(), '\"'), value.end());
+				std::cout << "pbr metal map is " << value << std::endl;
+				item.pbrAttrib.metalnessMap = value;
+			}
+			else {
+				valEnd = json.find(',', valStart) + 1;
+				value = json.substr(valStart, valEnd - valStart);
+				float valueTest = std::stof(value);
+				//std::cout << "meshid: " << key << " : " << valueTest << std::endl;
+				item.pbrAttrib.metalness = valueTest;
+			}
+
+			valEnd = json.find('}', valStart) + 1;
+		}
+
+
+		else if (key == "lambertian") {
+			item.isLambert = true;
+
+			//albedo
+			valStart = json.find(':', valStart) + 1;
+			while (json[valStart] == ' ') valStart += 1;
+			if (json[valStart] == '[') {
+				valStart += 1;
+				valEnd = json.find(']', valStart) + 1;
+				value = json.substr(valStart, valEnd - valStart);
+				std::vector valueTest = stringToVector(value);
+				item.lambertAttrib.albedo = glm::vec3(valueTest[0], valueTest[1], valueTest[2]);
+			}
+			else if (json[valStart] == '{') {
+				valEnd = json.find('}', valStart);
+				valStart = json.find(':', valStart) + 1;
+				value = json.substr(valStart, valEnd - valStart);
+				value.erase(std::remove(value.begin(), value.end(), '\"'), value.end());
+				std::cout << "pbr albedo map is " << value << std::endl;
+				item.pbrAttrib.albedoTex = value;
+			}
+		}
+
+		else if (key == "mirror") {
+			item.isMirror = true;
+			valEnd = std::min(json.find(',', valStart), json.find('}', valStart));
+		}
+		else if (key == "simple") {
+			item.isMirror = true;
+			valEnd = std::min(json.find(',', valStart), json.find('}', valStart));
+		}
+
+
+		//environemnt
+		else if (key == "radiance") {
+			valEnd = json.find(',', valStart);
+			valStart = json.find(':', valStart) + 1;
+			value = json.substr(valStart, valEnd - valStart);
+			value.erase(std::remove(value.begin(), value.end(), '\"'), value.end());
+			std::cout << "radiance map is " << value << std::endl;
+			item.radiance.source = value;
+			valEnd = json.find('}', valStart) + 1;
+		}
+		//loop to the next value
+		while ((json[valEnd] == ' ') || (json[valEnd] == '\t') || (json[valEnd] == '\n') || (json[valEnd] == ',')) {
+			valEnd++;
+		}
+
 		pos = valEnd;
 		return pos;
 	}
@@ -652,6 +972,13 @@ public:
 				if (maxtime > maxPeriod) maxPeriod = maxtime;
 				std::cout << maxtime << std::endl;
 			}
+
+			if (item.type == "MATERIAL") {
+				
+			}
+			if (item.type == "ENVIRONMENT") {
+				
+			}
 		}
 		
 		//arrange mesh and node transform
@@ -677,11 +1004,11 @@ public:
 		while (true) {
 			while (json[pos] != '{') {
 				++pos;
-				if (pos > json.size()) {
+				if (pos >= json.size()) {
 					break;
 				}
 			}
-			if (pos > json.size()) {
+			if (pos >= json.size()) {
 				break;
 			}
 			SceneItem item{};
@@ -689,14 +1016,20 @@ public:
 				//parse one value
 				pos = parseKeyValue(item, pos, json);
 				//std::cout << "stop as " << json[pos] << std::endl;
+				cnt++;
+				//if (cnt > 10000) break;
 			}
 			items.push_back(item);
-			//std::cout << "pos is " << pos << "finish one --------------" << item.type << std::endl;
+			std::cout << "pos is " << pos << "finish one --------------" << item.type << std::endl;
+			cnt++;
+			//if (cnt > 10000) break;
 		}
 		
 
 		build();
 		std::cout << "finish building items: " << items.size() << std::endl;
+
+		
 	}
 
 };

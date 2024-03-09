@@ -1,13 +1,19 @@
-BLENDER=C:\Program Files\Blender Foundation\Blender 4.0\blender.exe
+BLENDER=~/blender-4.1.0-beta+v41.8842982dbd01-linux.x86_64-release/blender
+#BLENDER=~/blender-4.0.2-linux-x64/blender
 EXPORT_PY=../../exporters/blender/export-s72.py
+A72_TO_B72_JS=a72-to-b72.mjs
+CUBE_UTILITY=../../../A2-ref/bin/cube
 
 all : \
 	../sg-Articulation.s72 \
 	../sg-Support.s72 \
 	../sg-Containment.s72 \
 	../sg-Grouping.s72 \
-	../balls.s72 \
-	../sg-cube.s72 \
+	../sphereflake.s72 \
+	../rotation.s72 \
+	../env-cube.b72 \
+	../materials.s72 \
+	../ox_bridge_morning.png \
 
 
 ../sg-Articulation.s72 : scene-graphs.blend $(EXPORT_PY)
@@ -22,8 +28,24 @@ all : \
 ../sg-Grouping.s72 : scene-graphs.blend $(EXPORT_PY)
 	$(BLENDER) --background --python '$(EXPORT_PY)' -- '$<' --collection Grouping --animate 1 51 '$@'
 
-../balls.s72 : balls.blend $(EXPORT_PY)
-	$(BLENDER) --background --python '$(EXPORT_PY)' -- '$<' --collection balls  --animate 1 60 '$@'
+../sphereflake.s72 : sphereflake.blend $(EXPORT_PY)
+	$(BLENDER) --background --python '$(EXPORT_PY)' -- '$<' --collection Base '$@'
 
-../sg-cube.s72 :  scene-graphs.blend $(EXPORT_PY)
-	$(BLENDER) --background --python '$(EXPORT_PY)' -- '$<' --collection Cube '$@'
+../rotation.s72 : rotation.blend $(EXPORT_PY)
+	$(BLENDER) --background --python '$(EXPORT_PY)' -- '$<' --animate 0 48 '$@'
+
+../materials.s72 : materials.blend $(EXPORT_PY)
+	$(BLENDER) --background --python '$(EXPORT_PY)' -- '$<' '$@'
+
+../ox_bridge_morning.lambertian.png : ../ox_bridge_morning.png $(CUBE_UTILITY)
+	$(CUBE_UTILITY) '$<' --lambertian '$@'
+
+../ox_bridge_morning.png : ox_bridge_morning_8k.hdr $(CUBE_UTILITY)
+	$(CUBE_UTILITY) '$<' --latlon-to-cube '$@'
+
+ox_bridge_morning_8k.hdr :
+	wget 'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/8k/ox_bridge_morning_8k.hdr'
+
+
+../env-cube.b72 : env-cube.a72 $(A72_TO_B72_JS)
+	node '$(A72_TO_B72_JS)' '$<' '$@'

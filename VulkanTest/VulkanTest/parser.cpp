@@ -37,6 +37,8 @@ public:
 		Position pos;
 		Position normal;
 		Color color;
+		TexCoord texcood;
+		Tangent tangent;
 	};
 	std::vector<SceneVertex> vertexList;
 
@@ -944,6 +946,7 @@ public:
 			
 			id += 1;
 			item.id = id;
+			std::cout << "id is :" << id << " read as " << item.type << std::endl;
 			if (item.type == "SCENE") {
 				for (float i : item.roots) {
 					items[i - 1].parent = id;
@@ -964,6 +967,9 @@ public:
 					sv.pos = item.attributes.positionList[i];
 					sv.normal = item.attributes.normalList[i];
 					sv.color = item.attributes.colorList[i];
+					if(item.attributes.texCoordList.size() >0) sv.texcood = item.attributes.texCoordList[i];
+					if (item.attributes.tangentList.size() > 0) sv.tangent = item.attributes.tangentList[i];
+
 					vertexList.push_back(sv);
 				}
 			}

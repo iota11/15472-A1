@@ -32,13 +32,14 @@
 #include <thread> // For std::this_thread::sleep_for
 
 
-
 const uint32_t WIDTH = 800;
 const uint32_t HEIGHT = 600;
 
 const std::string MODEL_PATH = "models/viking_room.obj";
 //const std::string TEXTURE_PATH = "textures/viking_room.png";
-const std::string TEXTURE_PATH = "s72/examples/env-cube.png";
+//const std::string TEXTURE_PATH = "s72/examples/env-cube.png";
+const std::string TEXTURE_PATH = "s72/examples/ox_bridge_morning.png";
+
 const int MAX_FRAMES_IN_FLIGHT = 2;
 
 const std::vector<const char*> validationLayers = {
@@ -120,7 +121,7 @@ struct Vertex {
 		attributeDescriptions[2].location = 2;
 		attributeDescriptions[2].format = VK_FORMAT_R32G32B32_SFLOAT;
 		attributeDescriptions[2].offset = offsetof(Vertex, normal);
-		
+
 		attributeDescriptions[3].binding = 0;
 		attributeDescriptions[3].location = 3;
 		attributeDescriptions[3].format = VK_FORMAT_R32G32_SFLOAT;
@@ -156,7 +157,10 @@ struct UniformBufferObject {
 	alignas(16) glm::mat4 model;
 	alignas(16) glm::mat4 view;
 	alignas(16) glm::mat4 proj;
+	alignas(16) glm::vec3 cameraPos;
+
 };
+
 
 
 std::string readFileIntoString(const std::string& path) {
@@ -221,6 +225,12 @@ private:
 	VkImageView textureImageView;
 	VkSampler textureSampler;
 
+	VkImage envImage;
+	VkDeviceMemory envImageMemory;
+	VkImageView envImageView;
+	VkSampler envImageSampler;
+
+
 	std::vector<Vertex> vertices;
 	std::vector<uint32_t> indices;
 	VkBuffer vertexBuffer;
@@ -263,11 +273,11 @@ private:
 			if (sceneCameraList.size() > 0) {
 				//std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 				sceneCamID += 1;
-				sceneCamID%= sceneCameraList.size();
+				sceneCamID %= sceneCameraList.size();
 				activeCamera = &sceneCameraList[sceneCamID];
 			}
 		}
-			
+
 		if (glfwGetKey(window, GLFW_KEY_3) == GLFW_PRESS)
 			activeCamera = &debugCamera;
 	}
@@ -373,7 +383,7 @@ private:
 		while (!glfwWindowShouldClose(window)) {
 			glfwPollEvents();
 			processInput(window);
-			
+
 			drawFrame();
 		}
 
@@ -743,6 +753,8 @@ private:
 	}
 
 	void createGraphicsPipeline() {
+		//auto vertShaderCode = readFile("shaders/mirrorShader/MirrorVert.spv");
+		//auto fragShaderCode = readFile("shaders/mirrorShader/MirrorFrag.spv");
 		auto vertShaderCode = readFile("shaders/vert.spv");
 		auto fragShaderCode = readFile("shaders/frag.spv");
 		//auto test = readFile("s72-main/examples/sg-Articulation.Foot.b72");
@@ -851,7 +863,7 @@ private:
 			throw std::runtime_error("failed to create pipeline layout!");
 		}
 
-		
+
 
 		VkGraphicsPipelineCreateInfo pipelineInfo{};
 
@@ -953,10 +965,42 @@ private:
 		return format == VK_FORMAT_D32_SFLOAT_S8_UINT || format == VK_FORMAT_D24_UNORM_S8_UINT;
 	}
 
+
+
+	// Convert RGBE to RGBA (float)
+	void rgbeToRgbaFloat(uint8_t* rgbeData, float* rgbaData, size_t numPixels) {
+		for (size_t i = 0; i < numPixels; ++i) {
+			// Extract RGBE components
+			uint8_t r = rgbeData[i * 4];
+			uint8_t g = rgbeData[i * 4 + 1];
+			uint8_t b = rgbeData[i * 4 + 2];
+			uint8_t e = rgbeData[i * 4 + 3];
+
+			// Calculate RGB components
+			float factor = std::ldexp(1.0f, e - 128); // Compute 2^(E-128)
+			float rf = (static_cast<float>(r)+0.5f) * factor/256.0f;
+			float gf = (static_cast<float>(g) + 0.5f) * factor/256.0f;
+			float bf = (static_cast<float>(b) +0.5f) * factor/256.0f;
+
+			// Set alpha component
+			float a = 1.0f; // Fixed value for alpha (fully opaque)
+
+			// Store RGBA components
+			rgbaData[i * 4] = rf;
+			rgbaData[i * 4 + 1] = gf;
+			rgbaData[i * 4 + 2] = bf;
+			rgbaData[i * 4 + 3] = a;
+		}
+	}
+
 	void createTextureImage() {
 		int texWidth, texHeight, texChannels;
 		stbi_uc* pixels = stbi_load(TEXTURE_PATH.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
-		VkDeviceSize imageSize = texWidth * texHeight * 4;
+		int pixelcount = texWidth * texHeight;
+		float* rgba_pixels = (float*)malloc(pixelcount * 4 * sizeof(float));
+		rgbeToRgbaFloat(pixels, rgba_pixels, pixelcount);
+
+		VkDeviceSize imageSize = texWidth * texHeight * 4 * 4;//map to higher 2bytes x 4
 
 		if (!pixels) {
 			throw std::runtime_error("failed to load texture image!");
@@ -968,23 +1012,24 @@ private:
 
 		void* data;
 		vkMapMemory(device, stagingBufferMemory, 0, imageSize, 0, &data);
-		memcpy(data, pixels, static_cast<size_t>(imageSize));
+		memcpy(data, rgba_pixels, static_cast<size_t>(imageSize));
 		vkUnmapMemory(device, stagingBufferMemory);
 
 		stbi_image_free(pixels);
+		free(rgba_pixels);
 
-		createImage(texWidth, texHeight, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, textureImage, textureImageMemory);
+		createImageEnv(texWidth, texHeight, VK_FORMAT_R32G32B32A32_SFLOAT, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, textureImage, textureImageMemory);
 
-		transitionImageLayout(textureImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL); //mark to write
-		copyBufferToImage(stagingBuffer, textureImage, static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight));
-		transitionImageLayout(textureImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL); //mark to read
+		transitionImageLayout(textureImage, VK_FORMAT_R32G32B32A32_SFLOAT, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL); //mark to write
+		copyBufferToImage(stagingBuffer, textureImage, static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight / 6));
+		transitionImageLayout(textureImage, VK_FORMAT_R32G32B32A32_SFLOAT, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL); //mark to read
 
 		vkDestroyBuffer(device, stagingBuffer, nullptr);
 		vkFreeMemory(device, stagingBufferMemory, nullptr);
 	}
 
 	void createTextureImageView() {
-		textureImageView = createImageView(textureImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT);
+		textureImageView = createImageViewEnv(textureImage, VK_FORMAT_R32G32B32A32_SFLOAT, VK_IMAGE_ASPECT_COLOR_BIT);
 	}
 
 	void createTextureSampler() {
@@ -1010,7 +1055,27 @@ private:
 			throw std::runtime_error("failed to create texture sampler!");
 		}
 	}
+	//for cubemap texture
+	VkImageView createImageViewEnv(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags) {
+		VkImageViewCreateInfo viewInfo{};
+		viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+		viewInfo.image = image;
+		viewInfo.viewType = VK_IMAGE_VIEW_TYPE_CUBE;
+		viewInfo.format = format;
+		viewInfo.subresourceRange.aspectMask = aspectFlags;
+		viewInfo.subresourceRange.baseMipLevel = 0;
+		viewInfo.subresourceRange.levelCount = 1;
+		viewInfo.subresourceRange.baseArrayLayer = 0;
+		viewInfo.subresourceRange.layerCount = 6;
 
+		VkImageView imageView;
+		if (vkCreateImageView(device, &viewInfo, nullptr, &imageView) != VK_SUCCESS) {
+			throw std::runtime_error("failed to create texture image view!");
+		}
+
+		return imageView;
+	}
+	//for 2D texture
 	VkImageView createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags) {
 		VkImageViewCreateInfo viewInfo{};
 		viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
@@ -1039,7 +1104,7 @@ private:
 		imageInfo.extent.height = height;
 		imageInfo.extent.depth = 1;
 		imageInfo.mipLevels = 1;
-		imageInfo.arrayLayers = 1;
+		imageInfo.arrayLayers = 1;//
 		imageInfo.format = format;
 		imageInfo.tiling = tiling;
 		imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
@@ -1065,7 +1130,41 @@ private:
 
 		vkBindImageMemory(device, image, imageMemory, 0);
 	}
+	void createImageEnv(uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage& image, VkDeviceMemory& imageMemory) {
+		VkImageCreateInfo imageInfo{};
+		imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+		imageInfo.imageType = VK_IMAGE_TYPE_2D;
+		imageInfo.extent.width = width;
+		imageInfo.extent.height = width;
+		imageInfo.extent.depth = 1;
+		imageInfo.mipLevels = 1;
+		imageInfo.arrayLayers = 6;//
+		imageInfo.flags = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;//read as cube texture
+		imageInfo.format = format;
+		imageInfo.tiling = tiling;
+		imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+		imageInfo.usage = usage;
+		imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+		imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
+		if (vkCreateImage(device, &imageInfo, nullptr, &image) != VK_SUCCESS) {
+			throw std::runtime_error("failed to create image!");
+		}
+
+		VkMemoryRequirements memRequirements;
+		vkGetImageMemoryRequirements(device, image, &memRequirements);
+
+		VkMemoryAllocateInfo allocInfo{};
+		allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+		allocInfo.allocationSize = memRequirements.size;
+		allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, properties);
+
+		if (vkAllocateMemory(device, &allocInfo, nullptr, &imageMemory) != VK_SUCCESS) {
+			throw std::runtime_error("failed to allocate image memory!");
+		}
+
+		vkBindImageMemory(device, image, imageMemory, 0);
+	}
 	void transitionImageLayout(VkImage image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout) {
 		VkCommandBuffer commandBuffer = beginSingleTimeCommands();
 
@@ -1080,7 +1179,7 @@ private:
 		barrier.subresourceRange.baseMipLevel = 0;
 		barrier.subresourceRange.levelCount = 1;
 		barrier.subresourceRange.baseArrayLayer = 0;
-		barrier.subresourceRange.layerCount = 1;
+		barrier.subresourceRange.layerCount = 6; //6
 
 		VkPipelineStageFlags sourceStage;
 		VkPipelineStageFlags destinationStage;
@@ -1117,24 +1216,33 @@ private:
 
 	void copyBufferToImage(VkBuffer buffer, VkImage image, uint32_t width, uint32_t height) {
 		VkCommandBuffer commandBuffer = beginSingleTimeCommands();
+		VkMemoryRequirements memRequirements;
+		vkGetBufferMemoryRequirements(device, buffer, &memRequirements);
 
-		VkBufferImageCopy region{};
-		region.bufferOffset = 0;
-		region.bufferRowLength = 0;
-		region.bufferImageHeight = 0;
-		region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-		region.imageSubresource.mipLevel = 0;
-		region.imageSubresource.baseArrayLayer = 0;
-		region.imageSubresource.layerCount = 1;
-		region.imageOffset = { 0, 0, 0 };
-		region.imageExtent = {
-			width,
-			height,
-			1
-		};
+		VkDeviceSize bufferSize = memRequirements.size;
 
-		vkCmdCopyBufferToImage(commandBuffer, buffer, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+		
+		VkDeviceSize layersize = width * width * 4*4;
+		std::cout << "Size of VkBuffer: " << bufferSize << " size of " << layersize << std::endl;
 
+		VkBufferImageCopy regions[6] = {};
+		for (unsigned int i = 0; i < 6; i++) {
+			regions[i].bufferOffset = i * layersize;
+			regions[i].bufferRowLength = 0;
+			regions[i].bufferImageHeight = 0;
+			regions[i].imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+			regions[i].imageSubresource.mipLevel = 0;
+			regions[i].imageSubresource.baseArrayLayer = i;// i
+			regions[i].imageSubresource.layerCount = 6;// to 6
+			regions[i].imageOffset = { 0, 0, 0 };//
+			regions[i].imageExtent = {
+				width,
+				width, // /6
+				1
+			};
+
+		}
+		vkCmdCopyBufferToImage(commandBuffer, buffer, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, regions);
 		endSingleTimeCommands(commandBuffer);
 	}
 
@@ -1149,7 +1257,7 @@ private:
 		for (SimpleJSONParser::SceneVertex vtx : parser.vertexList) {
 			Vertex vertex{};
 			vertex.pos = { vtx.pos.x, vtx.pos.y, vtx.pos.z };
-			vertex.color = { vtx.color.r/255.0f, vtx.color.g / 255.0f,vtx.color.b / 255.0f };
+			vertex.color = { vtx.color.r / 255.0f, vtx.color.g / 255.0f,vtx.color.b / 255.0f };
 			vertex.normal = { vtx.normal.x ,vtx.normal.y, vtx.normal.z };
 			vertex.texcoord = { vtx.texcood.u, vtx.texcood.v };
 			//vertex.tangent = { vtx.tangent.x, vtx.tangent.y, vtx.tangent.z, vtx.tangent.w };
@@ -1514,7 +1622,7 @@ private:
 		float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
 		parser.update(time);
 		//update camera
-		for (Camera &cam : sceneCameraList) {
+		for (Camera& cam : sceneCameraList) {
 			SimpleJSONParser::SceneItem& item = parser.items[cam.item_id - 1];
 			glm::mat4 trans = item.trans;
 			glm::vec3 position = glm::vec3(trans[3][0], trans[3][1], trans[3][2]);
@@ -1529,10 +1637,10 @@ private:
 		UniformBufferObject ubo{};
 		ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
 		//ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-		ubo.view = activeCamera -> GetViewMatrix();
+		ubo.view = activeCamera->GetViewMatrix();
 		ubo.proj = glm::perspective(activeCamera->fov, swapChainExtent.width / (float)swapChainExtent.height, activeCamera->near, activeCamera->far);
 		ubo.proj[1][1] *= -1;
-
+		ubo.cameraPos = activeCamera->Position;
 		memcpy(uniformBuffersMapped[currentImage], &ubo, sizeof(ubo));
 	}
 
@@ -1694,7 +1802,7 @@ private:
 		VkPhysicalDeviceFeatures supportedFeatures;
 		vkGetPhysicalDeviceFeatures(device, &supportedFeatures);
 
-		return indices.isComplete() && extensionsSupported && swapChainAdequate  && supportedFeatures.samplerAnisotropy;
+		return indices.isComplete() && extensionsSupported && swapChainAdequate && supportedFeatures.samplerAnisotropy;
 	}
 
 	bool checkDeviceExtensionSupport(VkPhysicalDevice device) {

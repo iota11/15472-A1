@@ -38,7 +38,21 @@ const uint32_t HEIGHT = 600;
 const std::string MODEL_PATH = "models/viking_room.obj";
 //const std::string TEXTURE_PATH = "textures/viking_room.png";
 //const std::string TEXTURE_PATH = "s72/examples/env-cube.png";
-const std::string TEXTURE_PATH = "s72/examples/ox_bridge_morning.png";
+/*
+const std::string ENV_TEXTURE_PATH = "s72/examples/ox_bridge_morning.png";
+const std::string ALBEDO_TEXTURE_PATH = "s72/examples/brick-wall_albedo.png";
+const std::string NORMAL_TEXTURE_PATH = "s72/examples/brick-wall_normal-dx.png";
+const std::string METAL_TEXTURE_PATH = "s72/examples/brick-wall_metallic.png";
+const std::string ROUGH_TEXTURE_PATH = "s72/examples/brick-wall_roughness.png";
+const std::string DISPLACE_TEXTURE_PATH = "s72/examples/brick-wall_height.png";
+*/
+
+const std::string ENV_TEXTURE_PATH = "s72/examples/ox_bridge_morning.png";
+const std::string ALBEDO_TEXTURE_PATH = "textures/albedo.png";
+const std::string NORMAL_TEXTURE_PATH = "textures/viking_room.png";
+const std::string METAL_TEXTURE_PATH = "s72/examples/env-cube.png";
+const std::string ROUGH_TEXTURE_PATH = "s72/examples/env-cube.png";
+const std::string DISPLACE_TEXTURE_PATH = "s72/examples/env-cube.png";
 
 const int MAX_FRAMES_IN_FLIGHT = 2;
 
@@ -220,16 +234,37 @@ private:
 	VkDeviceMemory depthImageMemory;
 	VkImageView depthImageView;
 
-	VkImage textureImage;
-	VkDeviceMemory textureImageMemory;
-	VkImageView textureImageView;
-	VkSampler textureSampler;
 
 	VkImage envImage;
 	VkDeviceMemory envImageMemory;
 	VkImageView envImageView;
-	VkSampler envImageSampler;
+	VkSampler envSampler;
 
+
+	VkImage albedoImage;
+	VkDeviceMemory albedoImageMemory;
+	VkImageView albedoImageView;
+	VkSampler albedoSampler;
+
+	VkImage normalImage;
+	VkDeviceMemory normalImageMemory;
+	VkImageView normalImageView;
+	VkSampler normalSampler;
+
+	VkImage roughnessImage;
+	VkDeviceMemory roughnessImageMemory;
+	VkImageView roughnessImageView;
+	VkSampler roughnessSampler;
+
+	VkImage metalnessImage;
+	VkDeviceMemory metalnessImageMemory;
+	VkImageView metalnessImageView;
+	VkSampler metalnessSampler;
+
+	VkImage displacementImage;
+	VkDeviceMemory displacementImageMemory;
+	VkImageView displacementImageView;
+	VkSampler displacementSampler;
 
 	std::vector<Vertex> vertices;
 	std::vector<uint32_t> indices;
@@ -361,9 +396,9 @@ private:
 		createCommandPool();
 		createDepthResources();
 		createFramebuffers();
-		createTextureImage();
+		createAllTextureImage();
 		createTextureImageView();
-		createTextureSampler();
+		createAllTextureSampler();
 		loadModel();
 		createVertexBuffer();
 		//createIndexBuffer();
@@ -420,11 +455,35 @@ private:
 
 		vkDestroyDescriptorPool(device, descriptorPool, nullptr);
 
-		vkDestroySampler(device, textureSampler, nullptr);
-		vkDestroyImageView(device, textureImageView, nullptr);
+		vkDestroySampler(device, albedoSampler, nullptr);
+		vkDestroyImageView(device, albedoImageView, nullptr);
+		vkDestroyImage(device, albedoImage, nullptr);
+		vkFreeMemory(device, albedoImageMemory, nullptr);
 
-		vkDestroyImage(device, textureImage, nullptr);
-		vkFreeMemory(device, textureImageMemory, nullptr);
+		vkDestroySampler(device, normalSampler, nullptr);
+		vkDestroyImageView(device, normalImageView, nullptr);
+		vkDestroyImage(device, normalImage, nullptr);
+		vkFreeMemory(device, normalImageMemory, nullptr);
+
+		vkDestroySampler(device, displacementSampler, nullptr);
+		vkDestroyImageView(device, displacementImageView, nullptr);
+		vkDestroyImage(device, displacementImage, nullptr);
+		vkFreeMemory(device, displacementImageMemory, nullptr);
+
+		vkDestroySampler(device, roughnessSampler, nullptr);
+		vkDestroyImageView(device, roughnessImageView, nullptr);
+		vkDestroyImage(device, roughnessImage, nullptr);
+		vkFreeMemory(device, roughnessImageMemory, nullptr);
+
+		vkDestroySampler(device, metalnessSampler, nullptr);
+		vkDestroyImageView(device, metalnessImageView, nullptr);
+		vkDestroyImage(device, metalnessImage, nullptr);
+		vkFreeMemory(device, metalnessImageMemory, nullptr);
+
+		vkDestroySampler(device, envSampler, nullptr);
+		vkDestroyImageView(device, envImageView, nullptr);
+		vkDestroyImage(device, envImage, nullptr);
+		vkFreeMemory(device, envImageMemory, nullptr);
 
 		vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
 
@@ -731,22 +790,61 @@ private:
 		uboLayoutBinding.binding = 0;
 		uboLayoutBinding.descriptorCount = 1;
 		uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-		uboLayoutBinding.pImmutableSamplers = nullptr;
-		uboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+		uboLayoutBinding.pImmutableSamplers = nullptr; //only for 
+		uboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;//only be referenced in vertex shader
+		//env
+		VkDescriptorSetLayoutBinding envSamplerLayoutBinding{};
+		envSamplerLayoutBinding.binding = 1;
+		envSamplerLayoutBinding.descriptorCount = 1;
+		envSamplerLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		envSamplerLayoutBinding.pImmutableSamplers = nullptr;
+		envSamplerLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 
-		VkDescriptorSetLayoutBinding samplerLayoutBinding{};
-		samplerLayoutBinding.binding = 1;
-		samplerLayoutBinding.descriptorCount = 1;
-		samplerLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-		samplerLayoutBinding.pImmutableSamplers = nullptr;
-		samplerLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+		//albedo
+		VkDescriptorSetLayoutBinding albedoSamplerLayoutBinding{};
+		albedoSamplerLayoutBinding.binding = 2;
+		albedoSamplerLayoutBinding.descriptorCount = 1;
+		albedoSamplerLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		albedoSamplerLayoutBinding.pImmutableSamplers = nullptr;
+		albedoSamplerLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 
-		std::array<VkDescriptorSetLayoutBinding, 2> bindings = { uboLayoutBinding, samplerLayoutBinding };
+		//normal
+		VkDescriptorSetLayoutBinding normalSamplerLayoutBinding{};
+		normalSamplerLayoutBinding.binding = 3;
+		normalSamplerLayoutBinding.descriptorCount = 1;
+		normalSamplerLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		normalSamplerLayoutBinding.pImmutableSamplers = nullptr;
+		normalSamplerLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+		//displacement
+		VkDescriptorSetLayoutBinding displacementSamplerLayoutBinding{};
+		displacementSamplerLayoutBinding.binding = 4;
+		displacementSamplerLayoutBinding.descriptorCount = 1;
+		displacementSamplerLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		displacementSamplerLayoutBinding.pImmutableSamplers = nullptr;
+		displacementSamplerLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+		//roughness
+		VkDescriptorSetLayoutBinding roughnessSamplerLayoutBinding{};
+		roughnessSamplerLayoutBinding.binding = 5;
+		roughnessSamplerLayoutBinding.descriptorCount = 1;
+		roughnessSamplerLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		roughnessSamplerLayoutBinding.pImmutableSamplers = nullptr;
+		roughnessSamplerLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+		//metalness
+		VkDescriptorSetLayoutBinding metalnessSamplerLayoutBinding{};
+		metalnessSamplerLayoutBinding.binding = 6;
+		metalnessSamplerLayoutBinding.descriptorCount = 1;
+		metalnessSamplerLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		metalnessSamplerLayoutBinding.pImmutableSamplers = nullptr;
+		metalnessSamplerLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+
+		std::array<VkDescriptorSetLayoutBinding, 7> bindings = { uboLayoutBinding, envSamplerLayoutBinding, albedoSamplerLayoutBinding, normalSamplerLayoutBinding, displacementSamplerLayoutBinding, roughnessSamplerLayoutBinding, metalnessSamplerLayoutBinding };
+		//tell the pipeline that our layout
 		VkDescriptorSetLayoutCreateInfo layoutInfo{};
 		layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
 		layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
 		layoutInfo.pBindings = bindings.data();
-
+		//set to global descriptor layout with layout Info
 		if (vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &descriptorSetLayout) != VK_SUCCESS) {
 			throw std::runtime_error("failed to create descriptor set layout!");
 		}
@@ -853,7 +951,7 @@ private:
 		VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
 		pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
 		pipelineLayoutInfo.setLayoutCount = 1;
-		pipelineLayoutInfo.pSetLayouts = &descriptorSetLayout;
+		pipelineLayoutInfo.pSetLayouts = &descriptorSetLayout; //bind the descriptor set layout
 
 		pipelineLayoutInfo.pushConstantRangeCount = 1;
 		pipelineLayoutInfo.pPushConstantRanges = &pushConstantRange;
@@ -993,9 +1091,51 @@ private:
 		}
 	}
 
-	void createTextureImage() {
+	void createAllTextureImage() {
+		createEnvTextureImage(ENV_TEXTURE_PATH);
+		createTextureImage( albedoImage, albedoImageMemory, ALBEDO_TEXTURE_PATH, VK_FORMAT_R8G8B8A8_SRGB);
+		createTextureImage( normalImage,  normalImageMemory,NORMAL_TEXTURE_PATH, VK_FORMAT_R8G8B8A8_SNORM);
+		createTextureImage( roughnessImage, roughnessImageMemory,  ROUGH_TEXTURE_PATH, VK_FORMAT_R8G8B8A8_SNORM);
+		createTextureImage( metalnessImage, metalnessImageMemory, METAL_TEXTURE_PATH, VK_FORMAT_R8G8B8A8_SNORM);
+		createTextureImage( displacementImage, displacementImageMemory,  DISPLACE_TEXTURE_PATH, VK_FORMAT_R8G8B8A8_SNORM);
+
+
+	}
+	void createTextureImage(VkImage &imageinput, VkDeviceMemory &imageMemory, const std::string& texturePath, VkFormat format) {
 		int texWidth, texHeight, texChannels;
-		stbi_uc* pixels = stbi_load(TEXTURE_PATH.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+		stbi_uc* pixels = stbi_load(texturePath.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+		int pixelcount = texWidth * texHeight;
+		std::cout << "load " << texturePath << std::endl;
+		VkDeviceSize imageSize = texWidth * texHeight * 4 * 1;
+
+		if (!pixels) {
+			throw std::runtime_error("failed to load texture image!");
+		}
+
+		VkBuffer stagingBuffer;//copy the pixel to GPU
+		VkDeviceMemory stagingBufferMemory;
+		createBuffer(imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer, stagingBufferMemory);
+
+		void* data;
+		vkMapMemory(device, stagingBufferMemory, 0, imageSize, 0, &data);
+		memcpy(data, pixels, static_cast<size_t>(imageSize));
+		vkUnmapMemory(device, stagingBufferMemory);
+
+		stbi_image_free(pixels);
+
+		createImage(texWidth, texHeight, format, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, imageinput, imageMemory);
+
+		transitionImageLayout(imageinput, format, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, false); //mark to write
+		copyBufferToImage(stagingBuffer, imageinput, static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight));
+		transitionImageLayout(imageinput, format, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, false); //mark to read
+
+		vkDestroyBuffer(device, stagingBuffer, nullptr);
+		vkFreeMemory(device, stagingBufferMemory, nullptr);
+	}
+
+	void createEnvTextureImage(const std::string &texturePath) {
+		int texWidth, texHeight, texChannels;
+		stbi_uc* pixels = stbi_load(texturePath.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
 		int pixelcount = texWidth * texHeight;
 		float* rgba_pixels = (float*)malloc(pixelcount * 4 * sizeof(float));
 		rgbeToRgbaFloat(pixels, rgba_pixels, pixelcount);
@@ -1018,21 +1158,35 @@ private:
 		stbi_image_free(pixels);
 		free(rgba_pixels);
 
-		createImageEnv(texWidth, texHeight, VK_FORMAT_R32G32B32A32_SFLOAT, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, textureImage, textureImageMemory);
+		createImageEnv(texWidth, texHeight, VK_FORMAT_R32G32B32A32_SFLOAT, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, envImage, envImageMemory);
 
-		transitionImageLayout(textureImage, VK_FORMAT_R32G32B32A32_SFLOAT, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL); //mark to write
-		copyBufferToImage(stagingBuffer, textureImage, static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight / 6));
-		transitionImageLayout(textureImage, VK_FORMAT_R32G32B32A32_SFLOAT, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL); //mark to read
+		transitionImageLayout(envImage, VK_FORMAT_R32G32B32A32_SFLOAT, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, true); //mark to write
+		copyBufferToImage(stagingBuffer, envImage, static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight / 6));
+		transitionImageLayout(envImage, VK_FORMAT_R32G32B32A32_SFLOAT, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, true); //mark to read
 
 		vkDestroyBuffer(device, stagingBuffer, nullptr);
 		vkFreeMemory(device, stagingBufferMemory, nullptr);
 	}
 
 	void createTextureImageView() {
-		textureImageView = createImageViewEnv(textureImage, VK_FORMAT_R32G32B32A32_SFLOAT, VK_IMAGE_ASPECT_COLOR_BIT);
+		envImageView = createImageViewEnv(envImage, VK_FORMAT_R32G32B32A32_SFLOAT, VK_IMAGE_ASPECT_COLOR_BIT);
+		albedoImageView = createImageViewEnv(albedoImage, VK_FORMAT_R8G8B8A8_SNORM, VK_IMAGE_ASPECT_COLOR_BIT);
+		normalImageView = createImageViewEnv(normalImage, VK_FORMAT_R8G8B8A8_SNORM, VK_IMAGE_ASPECT_COLOR_BIT);
+		roughnessImageView = createImageViewEnv(roughnessImage, VK_FORMAT_R8G8B8A8_SNORM, VK_IMAGE_ASPECT_COLOR_BIT);
+		metalnessImageView = createImageViewEnv(metalnessImage, VK_FORMAT_R8G8B8A8_SNORM, VK_IMAGE_ASPECT_COLOR_BIT);
+		displacementImageView = createImageViewEnv(displacementImage, VK_FORMAT_R8G8B8A8_SNORM, VK_IMAGE_ASPECT_COLOR_BIT);
 	}
 
-	void createTextureSampler() {
+	void createAllTextureSampler() {
+		createTextureSampler(albedoSampler);
+		createTextureSampler(normalSampler);
+		createTextureSampler(envSampler);
+		createTextureSampler(displacementSampler);
+		createTextureSampler(metalnessSampler);
+		createTextureSampler(roughnessSampler);
+
+	}
+	void createTextureSampler(VkSampler &sampler) {
 		VkPhysicalDeviceProperties properties{};
 		vkGetPhysicalDeviceProperties(physicalDevice, &properties);
 
@@ -1051,10 +1205,12 @@ private:
 		samplerInfo.compareOp = VK_COMPARE_OP_ALWAYS;
 		samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
 
-		if (vkCreateSampler(device, &samplerInfo, nullptr, &textureSampler) != VK_SUCCESS) {
+		if (vkCreateSampler(device, &samplerInfo, nullptr, &sampler) != VK_SUCCESS) {
 			throw std::runtime_error("failed to create texture sampler!");
 		}
 	}
+
+
 	//for cubemap texture
 	VkImageView createImageViewEnv(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags) {
 		VkImageViewCreateInfo viewInfo{};
@@ -1165,7 +1321,7 @@ private:
 
 		vkBindImageMemory(device, image, imageMemory, 0);
 	}
-	void transitionImageLayout(VkImage image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout) {
+	void transitionImageLayout(VkImage image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout, bool is_Cube) {
 		VkCommandBuffer commandBuffer = beginSingleTimeCommands();
 
 		VkImageMemoryBarrier barrier{};
@@ -1179,7 +1335,7 @@ private:
 		barrier.subresourceRange.baseMipLevel = 0;
 		barrier.subresourceRange.levelCount = 1;
 		barrier.subresourceRange.baseArrayLayer = 0;
-		barrier.subresourceRange.layerCount = 6; //6
+		barrier.subresourceRange.layerCount = is_Cube? 6 :1; //6
 
 		VkPipelineStageFlags sourceStage;
 		VkPipelineStageFlags destinationStage;
@@ -1342,18 +1498,35 @@ private:
 	}
 
 	void createDescriptorPool() {
-		std::array<VkDescriptorPoolSize, 2> poolSizes{};
+		std::array<VkDescriptorPoolSize, 6> poolSizes{};
 		poolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
 		poolSizes[0].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+		//env
 		poolSizes[1].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
 		poolSizes[1].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+		//albedo
+		poolSizes[2].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		poolSizes[2].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+		//normal
+		poolSizes[2].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		poolSizes[2].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+		//displacement
+		poolSizes[3].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		poolSizes[3].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+		//roughness
+		poolSizes[4].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		poolSizes[4].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+		//metalness
+		poolSizes[5].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		poolSizes[5].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+		
 
 		VkDescriptorPoolCreateInfo poolInfo{};
 		poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
 		poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
 		poolInfo.pPoolSizes = poolSizes.data();
 		poolInfo.maxSets = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
-
+		//create a pool for max frames each with descriptors
 		if (vkCreateDescriptorPool(device, &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS) {
 			throw std::runtime_error("failed to create descriptor pool!");
 		}
@@ -1374,16 +1547,42 @@ private:
 
 		for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
 			VkDescriptorBufferInfo bufferInfo{};
-			bufferInfo.buffer = uniformBuffers[i];
+			bufferInfo.buffer = uniformBuffers[i]; //bind the ubo
 			bufferInfo.offset = 0;
 			bufferInfo.range = sizeof(UniformBufferObject);
+			//env
+			VkDescriptorImageInfo envImageInfo{};
+			envImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+			envImageInfo.imageView = envImageView; //bind the imageview
+			envImageInfo.sampler = envSampler;
+			//albedo
+			VkDescriptorImageInfo albedoImageInfo{};
+			albedoImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+			albedoImageInfo.imageView = albedoImageView; //bind the imageview
+			albedoImageInfo.sampler = albedoSampler;
+			//normal
+			VkDescriptorImageInfo normalImageInfo{};
+			normalImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+			normalImageInfo.imageView = normalImageView; //bind the imageview
+			normalImageInfo.sampler = normalSampler;
+			//displacement
+			VkDescriptorImageInfo displacementImageInfo{};
+			displacementImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+			displacementImageInfo.imageView = displacementImageView; //bind the imageview
+			displacementImageInfo.sampler = displacementSampler;
+			//roughness
+			VkDescriptorImageInfo roughnessImageInfo{};
+			roughnessImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+			roughnessImageInfo.imageView = roughnessImageView; //bind the imageview
+			roughnessImageInfo.sampler = roughnessSampler;
+			//metalness
+			VkDescriptorImageInfo metalnessImageInfo{};
+			metalnessImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+			metalnessImageInfo.imageView = metalnessImageView; //bind the imageview
+			metalnessImageInfo.sampler = metalnessSampler;
 
-			VkDescriptorImageInfo imageInfo{};
-			imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-			imageInfo.imageView = textureImageView;
-			imageInfo.sampler = textureSampler;
 
-			std::array<VkWriteDescriptorSet, 2> descriptorWrites{};
+			std::array<VkWriteDescriptorSet, 7> descriptorWrites{};
 
 			descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 			descriptorWrites[0].dstSet = descriptorSets[i];
@@ -1392,14 +1591,61 @@ private:
 			descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
 			descriptorWrites[0].descriptorCount = 1;
 			descriptorWrites[0].pBufferInfo = &bufferInfo;
-
+			//env
 			descriptorWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 			descriptorWrites[1].dstSet = descriptorSets[i];
 			descriptorWrites[1].dstBinding = 1;
 			descriptorWrites[1].dstArrayElement = 0;
 			descriptorWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
 			descriptorWrites[1].descriptorCount = 1;
-			descriptorWrites[1].pImageInfo = &imageInfo;
+			descriptorWrites[1].pImageInfo = &envImageInfo;
+
+			//albedo
+			descriptorWrites[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+			descriptorWrites[2].dstSet = descriptorSets[i];
+			descriptorWrites[2].dstBinding = 2;
+			descriptorWrites[2].dstArrayElement = 0;
+			descriptorWrites[2].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+			descriptorWrites[2].descriptorCount = 1;
+			descriptorWrites[2].pImageInfo = &albedoImageInfo;
+			//normal
+			descriptorWrites[3].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+			descriptorWrites[3].dstSet = descriptorSets[i];
+			descriptorWrites[3].dstBinding = 3;
+			descriptorWrites[3].dstArrayElement = 0;
+			descriptorWrites[3].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+			descriptorWrites[3].descriptorCount = 1;
+			descriptorWrites[3].pImageInfo = &normalImageInfo;
+
+			//displacement
+			descriptorWrites[4].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+			descriptorWrites[4].dstSet = descriptorSets[i];
+			descriptorWrites[4].dstBinding = 4;
+			descriptorWrites[4].dstArrayElement = 0;
+			descriptorWrites[4].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+			descriptorWrites[4].descriptorCount = 1;
+			descriptorWrites[4].pImageInfo = &displacementImageInfo;
+
+			//roughness
+			descriptorWrites[5].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+			descriptorWrites[5].dstSet = descriptorSets[i];
+			descriptorWrites[5].dstBinding = 5;
+			descriptorWrites[5].dstArrayElement = 0;
+			descriptorWrites[5].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+			descriptorWrites[5].descriptorCount = 1;
+			descriptorWrites[5].pImageInfo = &roughnessImageInfo;
+
+			//metalness
+			descriptorWrites[6].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+			descriptorWrites[6].dstSet = descriptorSets[i];
+			descriptorWrites[6].dstBinding = 6;
+			descriptorWrites[6].dstArrayElement = 0;
+			descriptorWrites[6].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+			descriptorWrites[6].descriptorCount = 1;
+			descriptorWrites[6].pImageInfo = &metalnessImageInfo;
+
+
+
 
 			vkUpdateDescriptorSets(device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
 		}
@@ -1641,7 +1887,7 @@ private:
 		ubo.proj = glm::perspective(activeCamera->fov, swapChainExtent.width / (float)swapChainExtent.height, activeCamera->near, activeCamera->far);
 		ubo.proj[1][1] *= -1;
 		ubo.cameraPos = activeCamera->Position;
-		memcpy(uniformBuffersMapped[currentImage], &ubo, sizeof(ubo));
+		memcpy(uniformBuffersMapped[currentImage], &ubo, sizeof(ubo));//copy the data uniformbuffer
 	}
 
 	void drawFrame() {

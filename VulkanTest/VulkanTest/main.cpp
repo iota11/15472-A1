@@ -51,12 +51,20 @@ const std::string ENV_TEXTURE_PATH = "s72/examples/env-cube.png";
 const std::string BRDF_PATH = "s72/examples/brdf.png";
 //const std::string DIFFUSE_LUT_PATH = "s72/examples/ox_bridge_morning-diffuse.png";
 const std::string DIFFUSE_LUT_PATH = "s72/examples/env-cube-diffuse.png";
-
+/*
 const std::string ALBEDO_TEXTURE_PATH = "textures/albedo.png";
 const std::string NORMAL_TEXTURE_PATH = "textures/normal.png";
 const std::string METAL_TEXTURE_PATH = "textures/metallic.png";
 const std::string ROUGH_TEXTURE_PATH = "textures/roughness.png";
 const std::string DISPLACE_TEXTURE_PATH = "textures/height.png";
+*/
+
+const std::string ALBEDO_TEXTURE_PATH = "textures/monkey_BaseColor.png";
+const std::string NORMAL_TEXTURE_PATH = "textures/monkey_Normal.png";
+const std::string METAL_TEXTURE_PATH = "textures/monkey_Metallic.png";
+const std::string ROUGH_TEXTURE_PATH = "textures/monkey_Roughness.png";
+const std::string DISPLACE_TEXTURE_PATH = "textures/monkey_Height.png";
+
 
 const int MAX_FRAMES_IN_FLIGHT = 2;
 
@@ -899,8 +907,10 @@ private:
 		//auto fragShaderCode = readFile("shaders/mirrorShader/MirrorFrag.spv");
 		//auto vertShaderCode = readFile("shaders/vert.spv");
 		//auto fragShaderCode = readFile("shaders/frag.spv");
-		auto vertShaderCode = readFile("shaders/lambertShader/LambertVert.spv");
-		auto fragShaderCode = readFile("shaders/lambertShader/LambertFrag.spv");
+		//auto vertShaderCode = readFile("shaders/lambertShader/LambertVert.spv");
+		//auto fragShaderCode = readFile("shaders/lambertShader/LambertFrag.spv");
+		auto vertShaderCode = readFile("shaders/pbrShader/PBRVert.spv");
+		auto fragShaderCode = readFile("shaders/pbrShader/PBRFrag.spv");
 		//auto test = readFile("s72-main/examples/sg-Articulation.Foot.b72");
 		//std::cout << test.size() << std::endl;
 		VkShaderModule vertShaderModule = createShaderModule(vertShaderCode);

@@ -50,11 +50,11 @@ void main() {
 
 	vec3 viewDir = normalize(fragPosition - camPos);
     vec3 col = texture(albedoTexture, fragTexCoord).xyz;
-    vec3 irradiance  = texture(cubeMapTexture, normalWorld).rgb;
+    vec3 irradiance  = texture(irradianceTexture, fragNormal).rgb;
     col = irradiance*col;
 	col = ACESFilm(col);
     col = LinearToSRGB(col);
-    col = fragNormal.xyz;
-    col = texture(irradianceTexture, fragNormal).rgb;
+    //col = normalWorld;
+    //col = texture(irradianceTexture, fragNormal).rgb;
     outColor = vec4(col,1.0);
 }

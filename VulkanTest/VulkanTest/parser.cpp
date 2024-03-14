@@ -281,7 +281,7 @@ public:
 
 
 	std::vector<Position> parseBinary32(std::string& text) {
-		std::string path = "s72-main/examples/";
+		std::string path = "s72/examples/";
 		int valStart = text.find(':') + 1;
 		int valEnd = text.find(',');
 		std::string filepath = text.substr(valStart, valEnd - valStart);
@@ -299,7 +299,7 @@ public:
 		return readBinary32(filepath, stride, offset);
 	}
 	std::vector<Tangent> parseBinary32x4(std::string& text) {
-		std::string path = "s72-main/examples/";
+		std::string path = "s72/examples/";
 		int valStart = text.find(':') + 1;
 		int valEnd = text.find(',');
 		std::string filepath = text.substr(valStart, valEnd - valStart);
@@ -318,7 +318,7 @@ public:
 	}
 
 	std::vector<TexCoord> parseBinary32x2(std::string& text) {
-		std::string path = "s72-main/examples/";
+		std::string path = "s72/examples/";
 		int valStart = text.find(':') + 1;
 		int valEnd = text.find(',');
 		std::string filepath = text.substr(valStart, valEnd - valStart);
@@ -336,7 +336,7 @@ public:
 		return readBinary32x2(filepath, stride, offset);
 	}
 	std::vector<Color> parseBinary8(std::string& text) {
-		std::string path = "s72-main/examples/";
+		std::string path = "s72/examples/";
 		int valStart = text.find(':') + 1;
 		int valEnd = text.find(',');
 		std::string filepath = text.substr(valStart, valEnd - valStart);

@@ -24,10 +24,10 @@ layout(location = 3) out vec3 fragCamPos;
 layout(location = 4) out vec3 fragPosition;
 layout(location = 5) out vec4 fragTangent;
 void main() {
-    gl_Position = ubo.proj * ubo.view * pushConstants.transform * vec4(inPosition, 1.0);
+    gl_Position = ubo.proj * ubo.view * ubo.model * vec4(inPosition, 1.0);
     fragColor = inColor;
-    fragNormal = normalize(mat3(transpose(inverse(pushConstants.transform))) * inNormal); 
-    fragTangent = vec4(normalize(mat3(transpose(inverse(pushConstants.transform))) * inTangent.xyz), 1.0); 
+    fragNormal = normalize(mat3(transpose(inverse(ubo.model))) * inNormal); 
+    fragTangent = vec4(normalize(mat3(transpose(inverse(ubo.model))) * inTangent.xyz), 1.0); 
    //fragNormal = inNormal;
     fragTexCoord = inTexCoord;
     fragCamPos = ubo.camPos;

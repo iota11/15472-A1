@@ -202,6 +202,12 @@ public:
 
 		const size_t stride = s;
 		size_t offset = o;
+		float number;
+		while (file.read(reinterpret_cast<char*>(&number), sizeof(float))) {
+			// Output the read float
+			//std::cout << number << std::endl;
+		}
+
 		while (file) {
 			// Seek to the current offset
 			file.seekg(offset);

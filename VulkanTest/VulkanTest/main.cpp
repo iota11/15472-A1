@@ -30,7 +30,7 @@
 #include <unordered_map>
 #include "camera.cpp"
 #include <thread> // For std::this_thread::sleep_for
-
+#include "precompute.hpp"
 
 const uint32_t WIDTH = 800;
 const uint32_t HEIGHT = 600;
@@ -39,7 +39,6 @@ const std::string MODEL_PATH = "models/viking_room.obj";
 //const std::string TEXTURE_PATH = "textures/viking_room.png";
 //const std::string TEXTURE_PATH = "s72/examples/env-cube.png";
 /*
-const std::string ENV_TEXTURE_PATH = "s72/examples/ox_bridge_morning.png";
 const std::string ALBEDO_TEXTURE_PATH = "s72/examples/brick-wall_albedo.png";
 const std::string NORMAL_TEXTURE_PATH = "s72/examples/brick-wall_normal-dx.png";
 const std::string METAL_TEXTURE_PATH = "s72/examples/brick-wall_metallic.png";
@@ -47,7 +46,12 @@ const std::string ROUGH_TEXTURE_PATH = "s72/examples/brick-wall_roughness.png";
 const std::string DISPLACE_TEXTURE_PATH = "s72/examples/brick-wall_height.png";
 */
 
-const std::string ENV_TEXTURE_PATH = "s72/examples/ox_bridge_morning.png";
+//const std::string ENV_TEXTURE_PATH = "s72/examples/ox_bridge_morning.png";
+const std::string ENV_TEXTURE_PATH = "s72/examples/env-cube.png";
+const std::string BRDF_PATH = "s72/examples/brdf.png";
+//const std::string DIFFUSE_LUT_PATH = "s72/examples/ox_bridge_morning-diffuse.png";
+const std::string DIFFUSE_LUT_PATH = "s72/examples/env-cube-diffuse.png";
+
 const std::string ALBEDO_TEXTURE_PATH = "textures/albedo.png";
 const std::string NORMAL_TEXTURE_PATH = "textures/normal.png";
 const std::string METAL_TEXTURE_PATH = "textures/metallic.png";
@@ -107,7 +111,7 @@ struct Vertex {
 	glm::vec3 color;
 	glm::vec3 normal;
 	glm::vec2 texcoord;
-	//glm::vec4 tangent;
+	glm::vec4 tangent;
 
 	static VkVertexInputBindingDescription getBindingDescription() {
 		VkVertexInputBindingDescription bindingDescription{};
@@ -118,8 +122,8 @@ struct Vertex {
 		return bindingDescription;
 	}
 
-	static std::array<VkVertexInputAttributeDescription, 4> getAttributeDescriptions() {
-		std::array<VkVertexInputAttributeDescription, 4> attributeDescriptions{};
+	static std::array<VkVertexInputAttributeDescription, 5> getAttributeDescriptions() {
+		std::array<VkVertexInputAttributeDescription, 5> attributeDescriptions{};
 
 		attributeDescriptions[0].binding = 0;
 		attributeDescriptions[0].location = 0;
@@ -140,18 +144,18 @@ struct Vertex {
 		attributeDescriptions[3].location = 3;
 		attributeDescriptions[3].format = VK_FORMAT_R32G32_SFLOAT;
 		attributeDescriptions[3].offset = offsetof(Vertex, texcoord);
-		/*
-		attributeDescriptions[2].binding = 0;
-		attributeDescriptions[2].location = 4;
-		attributeDescriptions[2].format = VK_FORMAT_R32G32B32A32_SFLOAT;
-		attributeDescriptions[2].offset = offsetof(Vertex, tangent);
-		*/
+		
+		attributeDescriptions[4].binding = 0;
+		attributeDescriptions[4].location = 4;
+		attributeDescriptions[4].format = VK_FORMAT_R32G32B32A32_SFLOAT;
+		attributeDescriptions[4].offset = offsetof(Vertex, tangent);
+		
 		return attributeDescriptions;
 	}
 
 	bool operator==(const Vertex& other) const {
-		//return pos == other.pos && color == other.color && normal == other.normal && texcoord == other.texcoord && tangent == other.tangent;
-		return pos == other.pos && color == other.color && normal == other.normal && texcoord == other.texcoord;
+		return pos == other.pos && color == other.color && normal == other.normal && texcoord == other.texcoord && tangent == other.tangent;
+		//return pos == other.pos && color == other.color && normal == other.normal && texcoord == other.texcoord;
 	}
 };
 
@@ -209,7 +213,7 @@ private:
 	VkDebugUtilsMessengerEXT debugMessenger;
 	VkSurfaceKHR surface;
 	SimpleJSONParser parser;
-
+	PreComputeManager precomputer;
 	VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
 	VkDevice device;
 
@@ -240,6 +244,10 @@ private:
 	VkImageView envImageView;
 	VkSampler envSampler;
 
+	VkImage diffImage;
+	VkDeviceMemory diffImageMemory;
+	VkImageView diffImageView;
+	VkSampler diffuseSampler;
 
 	VkImage albedoImage;
 	VkDeviceMemory albedoImageMemory;
@@ -265,6 +273,12 @@ private:
 	VkDeviceMemory displacementImageMemory;
 	VkImageView displacementImageView;
 	VkSampler displacementSampler;
+
+	VkImage brdfImage;
+	VkDeviceMemory brdfImageMemory;
+	VkImageView brdfImageView;
+	VkSampler brdfSampler;
+
 
 	std::vector<Vertex> vertices;
 	std::vector<uint32_t> indices;
@@ -383,6 +397,7 @@ private:
 	}
 
 	void initVulkan() {
+		precompute();
 		createInstance();
 		setupDebugMessenger();
 		createSurface();
@@ -485,6 +500,17 @@ private:
 		vkDestroyImage(device, envImage, nullptr);
 		vkFreeMemory(device, envImageMemory, nullptr);
 
+
+		vkDestroySampler(device, diffuseSampler, nullptr);
+		vkDestroyImageView(device, diffImageView, nullptr);
+		vkDestroyImage(device, diffImage, nullptr);
+		vkFreeMemory(device, diffImageMemory, nullptr);
+
+		vkDestroySampler(device, brdfSampler, nullptr);
+		vkDestroyImageView(device, brdfImageView, nullptr);
+		vkDestroyImage(device, brdfImage, nullptr);
+		vkFreeMemory(device, brdfImageMemory, nullptr);
+
 		vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
 
 		//vkDestroyBuffer(device, indexBuffer, nullptr);
@@ -533,6 +559,10 @@ private:
 		createFramebuffers();
 	}
 
+	void precompute() {
+		//precomputer.DiffuseCompute(ENV_TEXTURE_PATH, DIFFUSE_LUT_PATH);
+		//precomputer.BRDFCompute(BRDF_PATH);
+	}
 	void createInstance() {
 		if (enableValidationLayers && !checkValidationLayerSupport()) {
 			throw std::runtime_error("validation layers requested, but not available!");
@@ -837,8 +867,22 @@ private:
 		metalnessSamplerLayoutBinding.pImmutableSamplers = nullptr;
 		metalnessSamplerLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 
+		VkDescriptorSetLayoutBinding diffSamplerLayoutBinding{};
+		diffSamplerLayoutBinding.binding = 7;
+		diffSamplerLayoutBinding.descriptorCount = 1;
+		diffSamplerLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		diffSamplerLayoutBinding.pImmutableSamplers = nullptr;
+		diffSamplerLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 
-		std::array<VkDescriptorSetLayoutBinding, 7> bindings = { uboLayoutBinding, envSamplerLayoutBinding, albedoSamplerLayoutBinding, normalSamplerLayoutBinding, displacementSamplerLayoutBinding, roughnessSamplerLayoutBinding, metalnessSamplerLayoutBinding };
+		VkDescriptorSetLayoutBinding brdfSamplerLayoutBinding{};
+		brdfSamplerLayoutBinding.binding = 8;
+		brdfSamplerLayoutBinding.descriptorCount = 1;
+		brdfSamplerLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		brdfSamplerLayoutBinding.pImmutableSamplers = nullptr;
+		brdfSamplerLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+
+		std::array<VkDescriptorSetLayoutBinding, 9> bindings = { uboLayoutBinding, envSamplerLayoutBinding, albedoSamplerLayoutBinding, normalSamplerLayoutBinding, displacementSamplerLayoutBinding, roughnessSamplerLayoutBinding, metalnessSamplerLayoutBinding, diffSamplerLayoutBinding, brdfSamplerLayoutBinding };
 		//tell the pipeline that our layout
 		VkDescriptorSetLayoutCreateInfo layoutInfo{};
 		layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -1094,13 +1138,14 @@ private:
 	}
 
 	void createAllTextureImage() {
-		createEnvTextureImage(ENV_TEXTURE_PATH);
+		createEnvTextureImage(ENV_TEXTURE_PATH, envImage, envImageMemory, 6);
+		createEnvTextureImage(DIFFUSE_LUT_PATH, diffImage, diffImageMemory,1);
 		createTextureImage( albedoImage, albedoImageMemory, ALBEDO_TEXTURE_PATH, VK_FORMAT_R8G8B8A8_UNORM);
 		createTextureImage( normalImage,  normalImageMemory,NORMAL_TEXTURE_PATH, VK_FORMAT_R8G8B8A8_UNORM);
 		createTextureImage( roughnessImage, roughnessImageMemory,  ROUGH_TEXTURE_PATH, VK_FORMAT_R8G8B8A8_UNORM);
 		createTextureImage( metalnessImage, metalnessImageMemory, METAL_TEXTURE_PATH, VK_FORMAT_R8G8B8A8_UNORM);
 		createTextureImage( displacementImage, displacementImageMemory,  DISPLACE_TEXTURE_PATH, VK_FORMAT_R8G8B8A8_UNORM);
-
+		createTextureImage(brdfImage, brdfImageMemory, BRDF_PATH, VK_FORMAT_R8G8B8A8_UNORM);
 
 	}
 	void createTextureImage(VkImage &imageinput, VkDeviceMemory &imageMemory, const std::string& texturePath, VkFormat format) {
@@ -1135,7 +1180,7 @@ private:
 		vkFreeMemory(device, stagingBufferMemory, nullptr);
 	}
 
-	void createEnvTextureImage(const std::string &texturePath) {
+	void createEnvTextureImage(const std::string &texturePath, VkImage& imageinput, VkDeviceMemory& imageMemory, uint8_t miplevel = 1) {
 		int texWidth, texHeight, texChannels;
 		stbi_uc* pixels = stbi_load(texturePath.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
 		int pixelcount = texWidth * texHeight;
@@ -1160,12 +1205,12 @@ private:
 		stbi_image_free(pixels);
 		free(rgba_pixels);
 
-		createImageEnv(texWidth, texHeight, VK_FORMAT_R32G32B32A32_SFLOAT, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, envImage, envImageMemory);
+		createImageEnv(texWidth, texHeight, VK_FORMAT_R32G32B32A32_SFLOAT, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, imageinput, imageMemory, miplevel);
 
-		transitionImageLayout(envImage, VK_FORMAT_R32G32B32A32_SFLOAT, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, true); //mark to write
+		transitionImageLayout(imageinput, VK_FORMAT_R32G32B32A32_SFLOAT, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, true); //mark to write
 		
-		copyBufferToImage(stagingBuffer, envImage, static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texWidth), true, true);
-		transitionImageLayout(envImage, VK_FORMAT_R32G32B32A32_SFLOAT, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, true); //mark to read
+		copyBufferToImage(stagingBuffer, imageinput, static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texWidth), true, true);
+		transitionImageLayout(imageinput, VK_FORMAT_R32G32B32A32_SFLOAT, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, true); //mark to read
 
 		vkDestroyBuffer(device, stagingBuffer, nullptr);
 		vkFreeMemory(device, stagingBufferMemory, nullptr);
@@ -1173,23 +1218,27 @@ private:
 
 	void createTextureImageView() {
 		envImageView = createImageViewEnv(envImage, VK_FORMAT_R32G32B32A32_SFLOAT, VK_IMAGE_ASPECT_COLOR_BIT);
+		diffImageView = createImageViewEnv(diffImage, VK_FORMAT_R32G32B32A32_SFLOAT, VK_IMAGE_ASPECT_COLOR_BIT);
 		albedoImageView = createImageView(albedoImage, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_ASPECT_COLOR_BIT);
 		normalImageView = createImageView(normalImage, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_ASPECT_COLOR_BIT);
 		roughnessImageView = createImageView(roughnessImage, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_ASPECT_COLOR_BIT);
 		metalnessImageView = createImageView(metalnessImage, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_ASPECT_COLOR_BIT);
 		displacementImageView = createImageView(displacementImage, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_ASPECT_COLOR_BIT);
+		brdfImageView = createImageView(brdfImage, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_ASPECT_COLOR_BIT);
 	}
 
 	void createAllTextureSampler() {
 		createTextureSampler(albedoSampler);
 		createTextureSampler(normalSampler);
-		createTextureSampler(envSampler);
+		createTextureSampler(envSampler, 6);
 		createTextureSampler(displacementSampler);
 		createTextureSampler(metalnessSampler);
 		createTextureSampler(roughnessSampler);
+		createTextureSampler(diffuseSampler);
+		createTextureSampler(brdfSampler);
 
 	}
-	void createTextureSampler(VkSampler &sampler) {
+	void createTextureSampler(VkSampler &sampler, uint8_t mipmap = 0) {
 		VkPhysicalDeviceProperties properties{};
 		vkGetPhysicalDeviceProperties(physicalDevice, &properties);
 
@@ -1207,6 +1256,11 @@ private:
 		samplerInfo.compareEnable = VK_FALSE;
 		samplerInfo.compareOp = VK_COMPARE_OP_ALWAYS;
 		samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+		if (mipmap > 0) {
+			samplerInfo.minLod = 0; // Starting LOD level
+			samplerInfo.maxLod = mipmap-1; // 6 levels, so we go from level 0 to level 5
+			samplerInfo.mipLodBias = 0.0f; // No bias
+		}
 
 		if (vkCreateSampler(device, &samplerInfo, nullptr, &sampler) != VK_SUCCESS) {
 			throw std::runtime_error("failed to create texture sampler!");
@@ -1215,7 +1269,7 @@ private:
 
 
 	//for cubemap texture
-	VkImageView createImageViewEnv(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags) {
+	VkImageView createImageViewEnv(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags, uint8_t mipmap = 0) {
 		VkImageViewCreateInfo viewInfo{};
 		viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
 		viewInfo.image = image;
@@ -1289,14 +1343,14 @@ private:
 
 		vkBindImageMemory(device, image, imageMemory, 0);
 	}
-	void createImageEnv(uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage& image, VkDeviceMemory& imageMemory) {
+	void createImageEnv(uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage& image, VkDeviceMemory& imageMemory, uint8_t miplevel = 1) {
 		VkImageCreateInfo imageInfo{};
 		imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
 		imageInfo.imageType = VK_IMAGE_TYPE_2D;
 		imageInfo.extent.width = width;
 		imageInfo.extent.height = width;
 		imageInfo.extent.depth = 1;
-		imageInfo.mipLevels = 1;
+		imageInfo.mipLevels = miplevel;
 		imageInfo.arrayLayers = 6;//
 		imageInfo.flags = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;//read as cube texture
 		imageInfo.format = format;
@@ -1427,7 +1481,9 @@ private:
 	void loadModel() {
 
 		//std::string filePath = "s72/examples/materials.s72";
-		std::string filePath = "s72/examples/env-cube.s72";
+		//std::string filePath = "s72/examples/env-cube.s72";
+		std::string filePath = "s72/examples/monkey.s72";
+
 		//std::cout << "Enter a path starting from : ";
 		//std::getline(std::cin, filePath); // Waits for the user to enter a string and press Enter
 		std::string fileContent = readFileIntoString(filePath);
@@ -1438,7 +1494,7 @@ private:
 			vertex.color = { vtx.color.r / 255.0f, vtx.color.g / 255.0f,vtx.color.b / 255.0f };
 			vertex.normal = { vtx.normal.x ,vtx.normal.y, vtx.normal.z };
 			vertex.texcoord = { vtx.texcood.u, vtx.texcood.v };
-			//vertex.tangent = { vtx.tangent.x, vtx.tangent.y, vtx.tangent.z, vtx.tangent.w };
+			vertex.tangent = { vtx.tangent.x, vtx.tangent.y, vtx.tangent.z, vtx.tangent.w };
 
 			vertices.push_back(vertex);
 		}
@@ -1520,7 +1576,7 @@ private:
 	}
 
 	void createDescriptorPool() {
-		std::array<VkDescriptorPoolSize, 7> poolSizes{};
+		std::array<VkDescriptorPoolSize, 9> poolSizes{};
 		poolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
 		poolSizes[0].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
 		//env
@@ -1541,7 +1597,12 @@ private:
 		//metalness
 		poolSizes[6].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
 		poolSizes[6].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
-		
+		//diff
+		poolSizes[7].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		poolSizes[7].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+		//brdf
+		poolSizes[8].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		poolSizes[8].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
 
 		VkDescriptorPoolCreateInfo poolInfo{};
 		poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
@@ -1603,8 +1664,21 @@ private:
 			metalnessImageInfo.imageView = metalnessImageView; //bind the imageview
 			metalnessImageInfo.sampler = metalnessSampler;
 
+			//diff
+			VkDescriptorImageInfo diffImageInfo{};
+			diffImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+			diffImageInfo.imageView = diffImageView; //bind the imageview
+			diffImageInfo.sampler = diffuseSampler;
 
-			std::array<VkWriteDescriptorSet, 7> descriptorWrites{};
+			//brdf
+			VkDescriptorImageInfo brdfImageInfo{};
+			brdfImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+			brdfImageInfo.imageView = brdfImageView; //bind the imageview
+			brdfImageInfo.sampler = brdfSampler;
+
+
+
+			std::array<VkWriteDescriptorSet, 9> descriptorWrites{};
 
 			descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 			descriptorWrites[0].dstSet = descriptorSets[i];
@@ -1665,6 +1739,22 @@ private:
 			descriptorWrites[6].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
 			descriptorWrites[6].descriptorCount = 1;
 			descriptorWrites[6].pImageInfo = &metalnessImageInfo;
+
+			descriptorWrites[7].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+			descriptorWrites[7].dstSet = descriptorSets[i];
+			descriptorWrites[7].dstBinding = 7;
+			descriptorWrites[7].dstArrayElement = 0;
+			descriptorWrites[7].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+			descriptorWrites[7].descriptorCount = 1;
+			descriptorWrites[7].pImageInfo = &diffImageInfo;
+
+			descriptorWrites[8].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+			descriptorWrites[8].dstSet = descriptorSets[i];
+			descriptorWrites[8].dstBinding = 8;
+			descriptorWrites[8].dstArrayElement = 0;
+			descriptorWrites[8].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+			descriptorWrites[8].descriptorCount = 1;
+			descriptorWrites[8].pImageInfo = &brdfImageInfo;
 
 
 
@@ -1888,7 +1978,7 @@ private:
 
 		auto currentTime = std::chrono::high_resolution_clock::now();
 		float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
-		parser.update(time);
+		parser.update(time); //this is to update the animation
 		//update camera
 		for (Camera& cam : sceneCameraList) {
 			SimpleJSONParser::SceneItem& item = parser.items[cam.item_id - 1];

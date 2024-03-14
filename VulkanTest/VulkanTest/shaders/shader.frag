@@ -67,6 +67,7 @@ void main() {
 	vec3 col = texture(cubeMapTexture, fragNormal).xyz;
     col = ACESFilm(col);
     col = LinearToSRGB(col);
+    col = fragNormal;
    //col = pow(col, vec3(1.0 / 2.2))
     outColor = vec4(col,1.0);
 }

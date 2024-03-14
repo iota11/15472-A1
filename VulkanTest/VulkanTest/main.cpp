@@ -49,10 +49,10 @@ const std::string DISPLACE_TEXTURE_PATH = "s72/examples/brick-wall_height.png";
 
 const std::string ENV_TEXTURE_PATH = "s72/examples/ox_bridge_morning.png";
 const std::string ALBEDO_TEXTURE_PATH = "textures/albedo.png";
-const std::string NORMAL_TEXTURE_PATH = "textures/viking_room.png";
-const std::string METAL_TEXTURE_PATH = "s72/examples/env-cube.png";
-const std::string ROUGH_TEXTURE_PATH = "s72/examples/env-cube.png";
-const std::string DISPLACE_TEXTURE_PATH = "s72/examples/env-cube.png";
+const std::string NORMAL_TEXTURE_PATH = "textures/normal.png";
+const std::string METAL_TEXTURE_PATH = "textures/metallic.png";
+const std::string ROUGH_TEXTURE_PATH = "textures/roughness.png";
+const std::string DISPLACE_TEXTURE_PATH = "textures/height.png";
 
 const int MAX_FRAMES_IN_FLIGHT = 2;
 
@@ -853,8 +853,10 @@ private:
 	void createGraphicsPipeline() {
 		//auto vertShaderCode = readFile("shaders/mirrorShader/MirrorVert.spv");
 		//auto fragShaderCode = readFile("shaders/mirrorShader/MirrorFrag.spv");
-		auto vertShaderCode = readFile("shaders/vert.spv");
-		auto fragShaderCode = readFile("shaders/frag.spv");
+		//auto vertShaderCode = readFile("shaders/vert.spv");
+		//auto fragShaderCode = readFile("shaders/frag.spv");
+		auto vertShaderCode = readFile("shaders/lambertShader/LambertVert.spv");
+		auto fragShaderCode = readFile("shaders/lambertShader/LambertFrag.spv");
 		//auto test = readFile("s72-main/examples/sg-Articulation.Foot.b72");
 		//std::cout << test.size() << std::endl;
 		VkShaderModule vertShaderModule = createShaderModule(vertShaderCode);
@@ -1093,11 +1095,11 @@ private:
 
 	void createAllTextureImage() {
 		createEnvTextureImage(ENV_TEXTURE_PATH);
-		createTextureImage( albedoImage, albedoImageMemory, ALBEDO_TEXTURE_PATH, VK_FORMAT_R8G8B8A8_SRGB);
-		createTextureImage( normalImage,  normalImageMemory,NORMAL_TEXTURE_PATH, VK_FORMAT_R8G8B8A8_SNORM);
-		createTextureImage( roughnessImage, roughnessImageMemory,  ROUGH_TEXTURE_PATH, VK_FORMAT_R8G8B8A8_SNORM);
-		createTextureImage( metalnessImage, metalnessImageMemory, METAL_TEXTURE_PATH, VK_FORMAT_R8G8B8A8_SNORM);
-		createTextureImage( displacementImage, displacementImageMemory,  DISPLACE_TEXTURE_PATH, VK_FORMAT_R8G8B8A8_SNORM);
+		createTextureImage( albedoImage, albedoImageMemory, ALBEDO_TEXTURE_PATH, VK_FORMAT_R8G8B8A8_UNORM);
+		createTextureImage( normalImage,  normalImageMemory,NORMAL_TEXTURE_PATH, VK_FORMAT_R8G8B8A8_UNORM);
+		createTextureImage( roughnessImage, roughnessImageMemory,  ROUGH_TEXTURE_PATH, VK_FORMAT_R8G8B8A8_UNORM);
+		createTextureImage( metalnessImage, metalnessImageMemory, METAL_TEXTURE_PATH, VK_FORMAT_R8G8B8A8_UNORM);
+		createTextureImage( displacementImage, displacementImageMemory,  DISPLACE_TEXTURE_PATH, VK_FORMAT_R8G8B8A8_UNORM);
 
 
 	}
@@ -1126,7 +1128,7 @@ private:
 		createImage(texWidth, texHeight, format, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, imageinput, imageMemory);
 
 		transitionImageLayout(imageinput, format, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, false); //mark to write
-		copyBufferToImage(stagingBuffer, imageinput, static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight));
+		copyBufferToImage(stagingBuffer, imageinput, static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight), false, false);
 		transitionImageLayout(imageinput, format, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, false); //mark to read
 
 		vkDestroyBuffer(device, stagingBuffer, nullptr);
@@ -1161,7 +1163,8 @@ private:
 		createImageEnv(texWidth, texHeight, VK_FORMAT_R32G32B32A32_SFLOAT, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, envImage, envImageMemory);
 
 		transitionImageLayout(envImage, VK_FORMAT_R32G32B32A32_SFLOAT, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, true); //mark to write
-		copyBufferToImage(stagingBuffer, envImage, static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight / 6));
+		
+		copyBufferToImage(stagingBuffer, envImage, static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texWidth), true, true);
 		transitionImageLayout(envImage, VK_FORMAT_R32G32B32A32_SFLOAT, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, true); //mark to read
 
 		vkDestroyBuffer(device, stagingBuffer, nullptr);
@@ -1170,11 +1173,11 @@ private:
 
 	void createTextureImageView() {
 		envImageView = createImageViewEnv(envImage, VK_FORMAT_R32G32B32A32_SFLOAT, VK_IMAGE_ASPECT_COLOR_BIT);
-		albedoImageView = createImageViewEnv(albedoImage, VK_FORMAT_R8G8B8A8_SNORM, VK_IMAGE_ASPECT_COLOR_BIT);
-		normalImageView = createImageViewEnv(normalImage, VK_FORMAT_R8G8B8A8_SNORM, VK_IMAGE_ASPECT_COLOR_BIT);
-		roughnessImageView = createImageViewEnv(roughnessImage, VK_FORMAT_R8G8B8A8_SNORM, VK_IMAGE_ASPECT_COLOR_BIT);
-		metalnessImageView = createImageViewEnv(metalnessImage, VK_FORMAT_R8G8B8A8_SNORM, VK_IMAGE_ASPECT_COLOR_BIT);
-		displacementImageView = createImageViewEnv(displacementImage, VK_FORMAT_R8G8B8A8_SNORM, VK_IMAGE_ASPECT_COLOR_BIT);
+		albedoImageView = createImageView(albedoImage, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_ASPECT_COLOR_BIT);
+		normalImageView = createImageView(normalImage, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_ASPECT_COLOR_BIT);
+		roughnessImageView = createImageView(roughnessImage, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_ASPECT_COLOR_BIT);
+		metalnessImageView = createImageView(metalnessImage, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_ASPECT_COLOR_BIT);
+		displacementImageView = createImageView(displacementImage, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_ASPECT_COLOR_BIT);
 	}
 
 	void createAllTextureSampler() {
@@ -1321,6 +1324,7 @@ private:
 
 		vkBindImageMemory(device, image, imageMemory, 0);
 	}
+	
 	void transitionImageLayout(VkImage image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout, bool is_Cube) {
 		VkCommandBuffer commandBuffer = beginSingleTimeCommands();
 
@@ -1370,7 +1374,7 @@ private:
 		endSingleTimeCommands(commandBuffer);
 	}
 
-	void copyBufferToImage(VkBuffer buffer, VkImage image, uint32_t width, uint32_t height) {
+	void copyBufferToImage(VkBuffer buffer, VkImage image, uint32_t width, uint32_t height, bool is_CUBE, bool is_HDR) {
 		VkCommandBuffer commandBuffer = beginSingleTimeCommands();
 		VkMemoryRequirements memRequirements;
 		vkGetBufferMemoryRequirements(device, buffer, &memRequirements);
@@ -1378,27 +1382,45 @@ private:
 		VkDeviceSize bufferSize = memRequirements.size;
 
 		
-		VkDeviceSize layersize = width * width * 4*4;
+		VkDeviceSize layersize = is_HDR?  width * height * 4*4 : width*height*4;
 		std::cout << "Size of VkBuffer: " << bufferSize << " size of " << layersize << std::endl;
+		if (is_CUBE) {
+			VkBufferImageCopy regions[6] = {};
+			for (unsigned int i = 0; i < 6; i++) {
+				regions[i].bufferOffset = i * layersize;
+				regions[i].bufferRowLength = 0;
+				regions[i].bufferImageHeight = 0;
+				regions[i].imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+				regions[i].imageSubresource.mipLevel = 0;
+				regions[i].imageSubresource.baseArrayLayer = i;// i
+				regions[i].imageSubresource.layerCount = 6;
+				regions[i].imageOffset = { 0, 0, 0 };//
+				regions[i].imageExtent = {
+					width,
+					height, // /6
+					1
+				};
 
-		VkBufferImageCopy regions[6] = {};
-		for (unsigned int i = 0; i < 6; i++) {
-			regions[i].bufferOffset = i * layersize;
-			regions[i].bufferRowLength = 0;
-			regions[i].bufferImageHeight = 0;
-			regions[i].imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-			regions[i].imageSubresource.mipLevel = 0;
-			regions[i].imageSubresource.baseArrayLayer = i;// i
-			regions[i].imageSubresource.layerCount = 6;// to 6
-			regions[i].imageOffset = { 0, 0, 0 };//
-			regions[i].imageExtent = {
+			}
+			vkCmdCopyBufferToImage(commandBuffer, buffer, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, regions);
+		}
+		else {
+			VkBufferImageCopy region = {};
+			region.bufferOffset = 0;
+			region.bufferRowLength = 0;
+			region.bufferImageHeight = 0;
+			region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+			region.imageSubresource.mipLevel = 0;
+			region.imageSubresource.baseArrayLayer = 0;//start from 0
+			region.imageSubresource.layerCount = 1;
+			region.imageOffset = { 0, 0, 0 };//
+			region.imageExtent = {
 				width,
-				width, // /6
+				height, // /6
 				1
 			};
-
+			vkCmdCopyBufferToImage(commandBuffer, buffer, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
 		}
-		vkCmdCopyBufferToImage(commandBuffer, buffer, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, regions);
 		endSingleTimeCommands(commandBuffer);
 	}
 
@@ -1498,7 +1520,7 @@ private:
 	}
 
 	void createDescriptorPool() {
-		std::array<VkDescriptorPoolSize, 6> poolSizes{};
+		std::array<VkDescriptorPoolSize, 7> poolSizes{};
 		poolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
 		poolSizes[0].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
 		//env
@@ -1508,17 +1530,17 @@ private:
 		poolSizes[2].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
 		poolSizes[2].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
 		//normal
-		poolSizes[2].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-		poolSizes[2].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
-		//displacement
 		poolSizes[3].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
 		poolSizes[3].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
-		//roughness
+		//displacement
 		poolSizes[4].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
 		poolSizes[4].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
-		//metalness
+		//roughness
 		poolSizes[5].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
 		poolSizes[5].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+		//metalness
+		poolSizes[6].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		poolSizes[6].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
 		
 
 		VkDescriptorPoolCreateInfo poolInfo{};
